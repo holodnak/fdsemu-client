@@ -39,7 +39,7 @@ void cli_progress(void *user, uint32_t n)
 	printf(".");
 }
 
-__inline uint8_t raw_to_raw03_byte(uint8_t raw)
+uint8_t raw_to_raw03_byte(uint8_t raw)
 {
 	if (raw < 0x40)
 		return(3);

@@ -20,6 +20,11 @@ ifeq ($(UNAME),Linux)
 	LIBS = `pkg-config libusb-1.0 --libs` -lpthread -ludev
 endif
 
+ifeq ($(UNAME),Darwin)
+	HIDSRC = ../lib/hidapi/mac/hid.c
+	LIBS = -framework IOKit -framework CoreFoundation -liconv
+endif
+
 CSOURCE += $(HIDSRC)
 
 COBJECT = $(patsubst %.c,%.o,$(CSOURCE))
@@ -33,3 +38,7 @@ $(COBJECT): %.o: %.c
 
 $(CPPOBJECT): %.o: %.cpp
 	$(CXX) -c $(CFLAGS) $< -o $@
+
+clean:
+	rm $(COBJECT) $(CPPOBJECT) $(TARGET)
+
