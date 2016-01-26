@@ -1,7 +1,7 @@
 #pragma once
 
 #include <stdint.h>
-#include "hidapi/hidapi.h"
+#include "hidapi.h"
 
 enum {
 	SPI_WRITEMAX = 64 - 4,
