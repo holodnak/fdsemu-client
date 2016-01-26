@@ -1,0 +1,3 @@
+# Give r/w access to FDSemu
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="beef", MODE="0666"
+

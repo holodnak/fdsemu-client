@@ -28,6 +28,7 @@ void sleep_ms(int millisecs) {
 #include <termios.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdint.h>
 
 uint32_t getTicks() {
 	struct timeval tv;
