@@ -27,6 +27,7 @@ enum {
 	ACTION_READDISK,
 	ACTION_WRITEDISK,
 	ACTION_UPDATEFIRMWARE,
+	ACTION_UPDATEFIRMWARE2,
 	ACTION_UPDATEBOOTLOADER,
 	ACTION_UPDATELOADER,
 	ACTION_CHIPERASE,
@@ -260,7 +261,7 @@ static void usage(char *argv0)
 	printf("\n  usage: %s <options> <file(s)>\n\n%s", "fdsemu-cli", usagestr);
 }
 
-bool upload_firmware(uint8_t *firmware, int filesize)
+bool upload_firmware(uint8_t *firmware, int filesize, int useflash)
 {
 	uint8_t *buf;
 	uint32_t *buf32;
@@ -290,7 +291,7 @@ bool upload_firmware(uint8_t *firmware, int filesize)
 	buf32[(0x8000 - 4) / 4] = chksum;
 
 	//newer firmwares store the firmware image in sram to be updated
-	if (dev.Version > 792) {
+	if ((dev.Version > 792) && (useflash == 0)) {
 		printf("uploading new firmware to sram\n");
 		if (!dev.Sram->Write(buf, 0x0000, 0x8000)) {
 			printf("Write failed.\n");
@@ -365,21 +366,11 @@ bool upload_bootloader(uint8_t *firmware, int filesize)
 
 	dev.UpdateBootloader();
 	
-/*	printf("waiting for device to reboot\n");
-
-	dev.UpdateFirmware();
-	sleep_ms(3000);
-
-	if (!dev.Open()) {
-		printf("Open failed.\n");
-		return false;
-	}*/
-
 	printf("Updated bootloader, old crc = %08X, new crc = %08X\n", oldcrc, crc);
 	return(true);
 }
 
-bool firmware_update(char *filename)
+bool firmware_update(char *filename, int useflash)
 {
 	uint8_t *firmware;
 	int filesize;
@@ -391,7 +382,7 @@ bool firmware_update(char *filename)
 		return(false);
 	}
 
-	ret = upload_firmware(firmware, filesize);
+	ret = upload_firmware(firmware, filesize, useflash);
 
 	delete[] firmware;
 	return(ret);
@@ -956,7 +947,174 @@ static bool writeDisk2(uint8_t *bin, int binSize) {
 
 }
 
-bool FDS_writeDisk(char *filename) {
+typedef struct bin_s {
+	uint8_t *data;
+	int size;
+} bin_t;
+
+/*
+writes pre-formatted bin disk sides to disk
+*/
+bool BIN_writeDisk(bin_t *sides, int numsides)
+{
+	const int ZEROSIZE = 0x10000 + 8192;
+	uint8_t *zero = 0;
+	char prompt;
+	bool ret = true;
+
+	int i;
+	zero = (uint8_t*)malloc(ZEROSIZE);
+	memset(zero, 0, ZEROSIZE);
+
+	for (i = 0; i < numsides; i++) {
+		printf("Side %d\n", i + 1);
+
+		//zero out the sram
+		if (dev.Sram->Write(zero, 0, ZEROSIZE) == false) {
+			printf("Sram write failed (zero).\n");
+			ret = false;
+			break;
+		}
+
+		//write disk bin image to sram
+		if (dev.Sram->Write(sides[i].data, 0, sides[i].size) == false) {
+			printf("Sram write failed (bin).\n");
+			ret = false;
+			break;
+		}
+
+		//tell fdsemu to start writing the disk
+		if (!dev.DiskWriteStart()) {
+			ret = false;
+			break;
+		}
+
+		//check for more sides to be written
+		if ((i + 1) < numsides) {
+			printf("\nPlease wait for disk activity to stop before pressing ENTER to write the next disk side.\nPressing any other key will cancel.\n");
+			prompt = readKb();
+
+			//ensure enter keypress
+			if (prompt == 0x0D) {
+				continue;
+			}
+		}
+		else {
+			printf("\nDisk image sent to SRAM on device and is currently writing.\nPlease wait for disk activity to stop before removing disk.\n");
+		}
+	}
+	free(zero);
+	return(ret);
+}
+
+/*
+loads an entire .fds file, and writes each side to disk, prompting for disk changes
+*/
+bool FDS_writeDisk(char *filename)
+{
+	const int DISKSIZE = 0x10000 + 8192;
+	bin_t bins[16];			//plenty of room (bad practice i think this is)
+	uint8_t *ptr, *buf = 0;
+	int filesize, i, sides;
+	bool ret = false;
+
+	//load entire file into a buffer
+	if(!loadfile(filename, &buf, &filesize)) {
+		printf("Error loading %s\n", filename);
+		return(false);
+	}
+
+	//clear the array
+	memset(&bins, 0, sizeof(bin_t) * 16);
+
+	//use pointer to access disk data
+	ptr = buf;
+	//detect fwnes header
+	if (ptr[0] == 'F' && ptr[1] == 'D' && ptr[2] == 'S' && ptr[3] == 0x1A) {
+		ptr += 16;
+		printf("Skipping fwNES header.\n");
+		filesize -= (filesize - 16) % FDSSIZE;  //truncate down to whole disk
+	}
+
+	//no header, just make sure the size is correct
+	else {
+		filesize -= filesize % FDSSIZE;  //truncate down to whole disk
+	}
+
+	//calculate number of disk sides
+	sides = filesize / FDSSIZE;
+	printf("FDS format detected. (filesize = %d, %d disk sides)\n", filesize, sides);
+
+	//fill bins array with disk data
+	for (i = 0; i < sides; i++) {
+		bins[i].data = (uint8_t*)malloc(DISKSIZE);
+		bins[i].size = fds_to_bin(bins[i].data, ptr, DISKSIZE);
+
+		if(bins[i].size == 0) {
+			break;
+		}
+	}
+
+	//if the previous loop completed (i is equal to sides) then it processed the disk properly, now send to fdsemu for writing
+	if (i == sides) {
+		ret = BIN_writeDisk(bins, sides);
+	}
+
+	for (i = 0; i < sides; i++) {
+		if (bins[i].data != 0) {
+			free(bins[i].data);
+		}
+	}
+	free(buf);
+	return(ret);
+}
+
+bool GD_writeDisk(char *filename)
+{
+	return(false);
+}
+
+bool writeDisk(char *filename)
+{
+	FILE *fp;
+	uint8_t buf[128];
+	bool ret = false;
+
+	printf("Writing disk image '%s'...\n", filename);
+	if ((fp = fopen(filename, "rb")) == 0) {
+		printf("error opening file: %s\n", filename);
+	}
+	else if (fread(buf, 1, 128, fp) != 128) {
+		printf("error reading disk image\n");
+	}
+	else {
+
+		//detect fds format
+		if (buf[0] == 'F' && buf[1] == 'D' && buf[2] == 'S' && buf[3] == 0x1A) {
+			printf("Detected fwNES format.\n");
+			ret = FDS_writeDisk(filename);
+		}
+
+		else if (buf[0] == 0x01 && buf[1] == 0x2A && buf[2] == 0x4E && buf[0x38] == 0x02) {
+			printf("Detected FDS format.\n");
+			ret = FDS_writeDisk(filename);
+		}
+
+		//detect game doctor format
+		else if (buf[3] == 0x01 || buf[4] == 0x2A || buf[5] == 0x4E || buf[0x3D] == 0x02) {
+			printf("Detected Game Doctor format.\n");
+			ret = GD_writeDisk(filename);
+		}
+
+		else {
+			printf("unknown disk image format\n");
+		}
+	}
+	fclose(fp);
+	return(ret);
+}
+
+bool FDS_writeDisk_OLD(char *filename) {
 	enum {
 		LEAD_IN = DEFAULT_LEAD_IN / 8,
 		DISKSIZE = 0x10000 + 8192,               //whole disk contents including lead-in
@@ -1962,7 +2120,17 @@ int main(int argc, char *argv[])
 		}
 
 		//update firmware
-		else if (strcmp(argv[i], "-U") == 0 || strcmp(argv[i], "--update-bootloader") == 0) {
+		else if (strcmp(argv[i], "--update-firmware-flash") == 0) {
+			if ((i + 1) >= argc) {
+				printf("\nPlease specify a filename for the firmware to update with.\n");
+				return(1);
+			}
+			action = ACTION_UPDATEFIRMWARE2;
+			param = argv[++i];
+		}
+
+		//update firmware
+		else if (strcmp(argv[i], "--update-bootloader") == 0) {
 			if ((i + 1) >= argc) {
 				printf("\nPlease specify a filename for the bootloader to update with.\n");
 				return(1);
@@ -1991,7 +2159,7 @@ int main(int argc, char *argv[])
 		printf("Press 'y' to upgrade, any other key cancel: \n");
 		ch = readKb();
 		if (ch == 'Y' || ch == 'y') {
-			success = upload_firmware(firmware, firmware_length);
+			success = upload_firmware(firmware, firmware_length, 0);
 		}
 		action = -1;
 	}
@@ -2013,7 +2181,12 @@ int main(int argc, char *argv[])
 		break;
 
 	case ACTION_UPDATEFIRMWARE:
-		success = firmware_update(param);
+		success = firmware_update(param, 0);
+		break;
+
+	case ACTION_UPDATEFIRMWARE2:
+		printf("Updating firmware by flash\n");
+		success = firmware_update(param, 1);
 		break;
 
 	case ACTION_UPDATEBOOTLOADER:
@@ -2075,7 +2248,7 @@ int main(int argc, char *argv[])
 
 	case ACTION_WRITEDISK:
 		printf("Writing disk from file...\n");
-		success = FDS_writeDisk(param);
+		success = writeDisk(param);
 		break;
 
 	case ACTION_READDISK:
