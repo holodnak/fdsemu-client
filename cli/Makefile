@@ -4,12 +4,12 @@ LD = gcc
 
 UNAME = $(shell uname)
 
-CFLAGS = -I../lib/lz4 -I../lib/hidapi/hidapi -I../lib/fdsemu
+CFLAGS = -I../lib/lz4 -I../lib/hidapi/hidapi -I../lib/fdsemu -I../lib
 LIBS = -lsetupapi
 
 TARGET = fdsemu-cli
 
-CPPSOURCE = main.cpp firmware.cpp crc32.cpp
+CPPSOURCE = main.cpp ../lib/firmware.cpp ../lib/crc32.cpp
 CPPSOURCE += ../lib/fdsemu/Device.cpp ../lib/fdsemu/Flash.cpp ../lib/fdsemu/FlashUtil.cpp ../lib/fdsemu/Sram.cpp ../lib/fdsemu/System.cpp
 
 CSOURCE += ../lib/lz4/lz4.c ../lib/lz4/lz4frame.c ../lib/lz4/lz4hc.c ../lib/lz4/xxhash.c

@@ -57,14 +57,14 @@
     <ClCompile Include="..\..\lib\hidapi\windows\hid.c">
       <Filter>lib\hidapi</Filter>
     </ClCompile>
-    <ClCompile Include="..\firmware.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\crc32.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="..\..\lib\crc32.cpp">
+      <Filter>lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\lib\firmware.cpp">
+      <Filter>lib</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -104,11 +104,11 @@
     <ClInclude Include="..\build.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\crc32.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\version.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\lib\crc32.h">
+      <Filter>lib</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
