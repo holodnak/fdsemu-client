@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>541</width>
+    <height>440</height>
+   </rect>
+  </property>
+  <property name="acceptDrops">
+   <bool>true</bool>
+  </property>
+  <property name="windowTitle">
+   <string>FDSemu Client</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true"/>
+  </property>
+  <widget class="QWidget" name="centralWidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QLabel" name="label">
+      <property name="text">
+       <string>TextLabel</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QListWidget" name="listWidget">
+      <property name="contextMenuPolicy">
+       <enum>Qt::ActionsContextMenu</enum>
+      </property>
+      <property name="acceptDrops">
+       <bool>true</bool>
+      </property>
+      <property name="selectionMode">
+       <enum>QAbstractItemView::ExtendedSelection</enum>
+      </property>
+      <property name="sortingEnabled">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menuBar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>541</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menu_File">
+    <property name="title">
+     <string>&amp;File</string>
+    </property>
+    <addaction name="actionE_xit"/>
+   </widget>
+   <widget class="QMenu" name="menu_Operations">
+    <property name="title">
+     <string>&amp;Flash</string>
+    </property>
+    <addaction name="action_Write_disk_image"/>
+    <addaction name="action_Save_disk_image"/>
+    <addaction name="action_Erase"/>
+    <addaction name="separator"/>
+    <addaction name="actionUpdate_firmware"/>
+    <addaction name="separator"/>
+    <addaction name="action_Dump_flash"/>
+    <addaction name="action_Restore_dump"/>
+   </widget>
+   <widget class="QMenu" name="menu_Help">
+    <property name="title">
+     <string>&amp;Help</string>
+    </property>
+    <addaction name="action_About"/>
+   </widget>
+   <widget class="QMenu" name="menu_Disk">
+    <property name="title">
+     <string>&amp;Disk</string>
+    </property>
+    <addaction name="action_Read_disk"/>
+    <addaction name="action_Write_disk"/>
+   </widget>
+   <addaction name="menu_File"/>
+   <addaction name="menu_Operations"/>
+   <addaction name="menu_Disk"/>
+   <addaction name="menu_Help"/>
+  </widget>
+  <widget class="QStatusBar" name="statusBar">
+   <property name="styleSheet">
+    <string notr="true">QStatusBar::item {border: none;}</string>
+   </property>
+  </widget>
+  <action name="actionE_xit">
+   <property name="text">
+    <string>E&amp;xit</string>
+   </property>
+   <property name="statusTip">
+    <string>Quit FDSemu client app.</string>
+   </property>
+  </action>
+  <action name="action_Erase">
+   <property name="text">
+    <string>&amp;Erase disk image...</string>
+   </property>
+   <property name="statusTip">
+    <string>Erase a full disk image from the flash.</string>
+   </property>
+   <property name="whatsThis">
+    <string>Erase disk image from flash memory.</string>
+   </property>
+  </action>
+  <action name="action_Dump">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Dump...</string>
+   </property>
+   <property name="statusTip">
+    <string>Dump raw flash data to file.</string>
+   </property>
+  </action>
+  <action name="action_About">
+   <property name="text">
+    <string>&amp;About...</string>
+   </property>
+   <property name="statusTip">
+    <string>Display information about this program.</string>
+   </property>
+  </action>
+  <action name="action_Delete">
+   <property name="text">
+    <string>&amp;Delete</string>
+   </property>
+   <property name="toolTip">
+    <string>Erase selected disk.</string>
+   </property>
+  </action>
+  <action name="action_Info">
+   <property name="text">
+    <string>&amp;Info...</string>
+   </property>
+   <property name="toolTip">
+    <string>Get information about selected disk.</string>
+   </property>
+  </action>
+  <action name="action_Save">
+   <property name="text">
+    <string>&amp;Save</string>
+   </property>
+   <property name="toolTip">
+    <string>Save selected disk.</string>
+   </property>
+  </action>
+  <action name="actionUpdate_firmware">
+   <property name="text">
+    <string>Update &amp;firmware...</string>
+   </property>
+   <property name="statusTip">
+    <string>Update the firmware from a file.</string>
+   </property>
+  </action>
+  <action name="actionUpdate_loader">
+   <property name="text">
+    <string>Update &amp;loader...</string>
+   </property>
+   <property name="statusTip">
+    <string>Update the game loader from .FDS file.</string>
+   </property>
+  </action>
+  <action name="action_Read_disk">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Read disk...</string>
+   </property>
+   <property name="statusTip">
+    <string>Read disk from the FDS drive.</string>
+   </property>
+  </action>
+  <action name="action_Write_disk">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Write disk...</string>
+   </property>
+   <property name="statusTip">
+    <string>Write a .FDS disk image to a real FDS drive.</string>
+   </property>
+  </action>
+  <action name="action_Write_disk_image">
+   <property name="text">
+    <string>&amp;Write disk image...</string>
+   </property>
+   <property name="statusTip">
+    <string>Write a .FDS disk image to the flash.</string>
+   </property>
+  </action>
+  <action name="action_Save_disk_image">
+   <property name="text">
+    <string>&amp;Save disk image...</string>
+   </property>
+   <property name="statusTip">
+    <string>Save .FDS format image from an image stored in flash.</string>
+   </property>
+  </action>
+  <action name="action_Dump_flash">
+   <property name="text">
+    <string>&amp;Dump flash...</string>
+   </property>
+  </action>
+  <action name="action_Restore_dump">
+   <property name="text">
+    <string>&amp;Restore dump...</string>
+   </property>
+  </action>
+ </widget>
+ <layoutdefault spacing="6" margin="11"/>
+ <resources/>
+ <connections/>
+</ui>
