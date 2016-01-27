@@ -1,7 +1,3 @@
-/*
-auto disk search?  wrote disk to slot 0...ensure more security of the loader's slot
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -82,7 +78,7 @@ void copy_block(uint8_t *dst, uint8_t *src, int size) {
 	uint32_t crc = calc_crc(dst + 1, size + 2);
 	dst[size + 1] = crc;
 	dst[size + 2] = crc >> 8;
-//	printf("copying blocks, size = %d, crc = %04X\n", size + 2, crc);
+//	printf("copying block type %d, size = %d, crc = %04X\n", dst[1],size + 2, crc);
 }
 
 //Adds GAP + GAP end (0x80) + CRCs to .FDS image
@@ -143,6 +139,8 @@ int gameDoctor_to_bin(uint8_t *dst, uint8_t *src, int dstSize) {
 	}
 	memset(dst, 0, dstSize);
 
+	printf("converting image, max size = %d\n", dstSize);
+
 	//block type 1
 	int i = 3, o = 0;
 	copy_block(dst + o, src + i, 0x38);
@@ -157,6 +155,7 @@ int gameDoctor_to_bin(uint8_t *dst, uint8_t *src, int dstSize) {
 	//block type 3+4...
 	while (src[i] == 3) {
 		int size = (src[i + 13] | (src[i + 14] << 8)) + 1;
+		printf("copying blocks 3+4, size3 = %d, size4 = %d (i = %d, o = %d)\n", 16 + 3, size + 3, i, o);
 		if (o + 16 + 3 + GAP + size + 3 > dstSize) {    //end + block3 + crc + gap + end + block4 + crc
 			printf("Out of space (%d bytes short), adjust GAP size?\n", (o + 16 + 3 + GAP + size + 3) - dstSize);
 			return 0;
@@ -168,7 +167,6 @@ int gameDoctor_to_bin(uint8_t *dst, uint8_t *src, int dstSize) {
 		copy_block(dst + o, src + i, size);
 		i += size + 2;
 		o += size + 3 + GAP;
-//		printf("copying blocks 3+4, size3 = %d, size4 = %d\n", 16 + 3, size + 3);
 	}
 	return o;
 }
@@ -947,6 +945,8 @@ static bool writeDisk2(uint8_t *bin, int binSize) {
 
 }
 
+const int LEAD_IN = DEFAULT_LEAD_IN / 8;
+
 typedef struct bin_s {
 	uint8_t *data;
 	int size;
@@ -1029,6 +1029,7 @@ bool FDS_writeDisk(char *filename)
 
 	//use pointer to access disk data
 	ptr = buf;
+
 	//detect fwnes header
 	if (ptr[0] == 'F' && ptr[1] == 'D' && ptr[2] == 'S' && ptr[3] == 0x1A) {
 		ptr += 16;
@@ -1047,12 +1048,22 @@ bool FDS_writeDisk(char *filename)
 
 	//fill bins array with disk data
 	for (i = 0; i < sides; i++) {
-		bins[i].data = (uint8_t*)malloc(DISKSIZE);
-		bins[i].size = fds_to_bin(bins[i].data, ptr, DISKSIZE);
 
-		if(bins[i].size == 0) {
+		//allocate buffer
+		bins[i].data = (uint8_t*)malloc(DISKSIZE);
+		memset(bins[i].data, 0, DISKSIZE);
+
+		//convert disk to bin format
+		bins[i].size = fds_to_bin(bins[i].data + LEAD_IN, ptr, DISKSIZE - LEAD_IN);
+
+		//check if conversion was successful
+		if (bins[i].size == 0) {
 			break;
 		}
+
+		//add lead-in size to converted image size and advance input pointer
+		bins[i].size += LEAD_IN;
+		ptr += FDSSIZE;
 	}
 
 	//if the previous loop completed (i is equal to sides) then it processed the disk properly, now send to fdsemu for writing
@@ -1060,18 +1071,109 @@ bool FDS_writeDisk(char *filename)
 		ret = BIN_writeDisk(bins, sides);
 	}
 
+	//free any used memory
 	for (i = 0; i < sides; i++) {
 		if (bins[i].data != 0) {
 			free(bins[i].data);
 		}
 	}
+
+	//free file data
 	free(buf);
+
+	//return
 	return(ret);
 }
 
+//write supercard disks
+bool SC_writeDisk(char *filename) {
+	return(false);
+}
+
+bool find_doctors(char *first, char **files, int *numfiles, int maxfiles);
+
 bool GD_writeDisk(char *filename)
 {
-	return(false);
+	const int DISKSIZE = 0x10000 + 8192;
+	bin_t bins[16];			//plenty of room (bad practice i think this is)
+	char *files[16];
+	int numfiles = 0;
+	uint8_t *buf = 0;
+	uint8_t *binbuf = 0;
+	int i, len;
+	bool ret = false;
+
+/*	uint8_t *ptr;
+	int i, slot;
+	char *shortName;
+	uint8_t *buf, *cbuf;
+	int len, clen;*/
+
+	//clear the array
+	memset(&bins, 0, sizeof(bin_t) * 16);
+
+	//find files for this disk image
+	if (find_doctors(filename, files, &numfiles, 16) == false) {
+		printf("Failed to find doctor disk sides\n");
+		return(false);
+	}
+
+	//allocate temporary space for storing the bins
+	binbuf = (uint8_t*)malloc(DISKSIZE);
+
+	//loop thru found files
+	for (i = 0; i < numfiles; i++) {
+		printf("Loading %s...", files[i]);
+
+		//load game doctor image file
+		if (loadfile(files[i], &buf, &len) == false) {
+			printf("Error loading file\n");
+			break;
+		}
+
+		/*
+		better way to do this:
+		--modify gameDoctor_to_bin to accept a max size of input files instead of continuing along a large chunk of data
+		*/
+		//copy it to other block of data
+		memset(binbuf, 0, DISKSIZE);
+		memcpy(binbuf, buf, len);
+
+		//allocate buffer
+		bins[i].data = (uint8_t*)malloc(DISKSIZE);
+		memset(bins[i].data, 0, DISKSIZE);
+
+		//convert disk to bin format
+		bins[i].size = gameDoctor_to_bin(bins[i].data + LEAD_IN, binbuf, DISKSIZE - LEAD_IN);
+
+		//check if conversion was successful
+		if (bins[i].size == 0) {
+			printf("Error converting gamedoctor disk image '%s' to bin\n", files[i]);
+			break;
+		}
+
+		//account for lead-in data
+		bins[i].size += LEAD_IN;
+
+		free(buf);
+		printf("\n");
+	}
+
+	//if the previous loop completed (i is equal to sides) then it processed the disk properly, now send to fdsemu for writing
+	if (i == numfiles) {
+		ret = BIN_writeDisk(bins, numfiles);
+	}
+
+	//free any used memory
+	for (i = 0; i < numfiles; i++) {
+		if (bins[i].data != 0) {
+			free(bins[i].data);
+		}
+	}
+
+	free(binbuf);
+
+	return(ret);
 }
 
 bool writeDisk(char *filename)
