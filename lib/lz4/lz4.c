@@ -1168,7 +1168,7 @@ FORCE_INLINE int LZ4_decompress_generic(
             if ((safeDecode) && unlikely((size_t)(ip+length)<(size_t)(ip))) goto _output_error;   /* overflow detection */
         }
 
-			printf("literal length = %d\n",length);
+//			printf("literal length = %d\n",length);
         /* copy literals */
         cpy = op+length;
         if (((endOnInput) && ((cpy>(partialDecoding?oexit:oend-MFLIMIT)) || (ip+length>iend-(2+1+LASTLITERALS))) )
@@ -1212,7 +1212,7 @@ FORCE_INLINE int LZ4_decompress_generic(
             if ((safeDecode) && unlikely((size_t)(op+length)<(size_t)op)) goto _output_error;   /* overflow detection */
         }
         length += MINMATCH;
-		  printf("match length = %d, offset = %d\n",length,offs);
+//		  printf("match length = %d, offset = %d\n",length,offs);
 		  }
 
         /* check external dictionary */
