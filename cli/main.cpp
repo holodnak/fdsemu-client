@@ -11,6 +11,7 @@
 #include "diskutil.h"
 #include "diskrw.h"
 #include "flashrw.h"
+#include "fwupdate.h"
 
 #if defined WIN32
 char host[] = "Win32";
@@ -56,10 +57,46 @@ enum {
 	ACTION_VERIFY,
 };
 
+typedef struct arg_s {
+	int action;
+	char cshort;
+	char clong[32];
+	int numparams;
+	int *flagptr;
+	char description[256];
+} arg_t;
+
+#define ARG_ACTION(ac,sh,lo,np,de)		{ac,sh,lo,np,0,de}
+#define ARG_FLAG(va,sh,lo,de)			{-1,sh,lo,0,va,de}
+#define ARG_END()						{0,0,"",0,0,""}
 
 int action = ACTION_NONE;
 int verbose = 0;
 int force = 0;
+
+arg_t args[] = {
+	ARG_ACTION(ACTION_HELP,				'h',	"--help",					0,	"Display this message"),
+	ARG_ACTION(ACTION_LIST,				'l',	"--list",					0,	"List all disks stored in flash"),
+	ARG_ACTION(ACTION_SELFTEST,			0,		"--self-test",				0,	"Perform FDSemu self-test"),
+	ARG_ACTION(ACTION_CHIPERASE,		0,		"--chip-erase",				0,	"Erase entire flash chip"),
+	ARG_ACTION(ACTION_UPDATEFIRMWARE,	0,		"--update-firmware",		1,	"Update firmware from file (using sram)"),
+	ARG_ACTION(ACTION_UPDATEFIRMWARE2,	0,		"--update-firmware-flash",	1,	"Update firmware from file (using flash)"),
+	ARG_ACTION(ACTION_UPDATEBOOTLOADER,	0,		"--update-bootloader",		1,	"Update bootloader from file"),
+
+	ARG_ACTION(ACTION_WRITEDISK,		'w',	"--write-disk",				-1,	"Write disk from disk image"),
+	ARG_ACTION(ACTION_READDISK,			'r',	"--read-disk",				1,	"Read disk to fwNES format"),
+	ARG_ACTION(ACTION_READDISKBIN,		0,		"--read-disk-bin",			1,	"Read disk to bin format"),
+	ARG_ACTION(ACTION_READDISKRAW,		0,		"--read-disk-raw",			1,	"Read disk to raw format"),
+	ARG_ACTION(ACTION_READDISKDOCTOR,	0,		"--read-disk-doctor",		1,	"Read disk to game doctor format"),
+
+	ARG_ACTION(ACTION_ERASEFLASH,		'e',	"--erase",					-1,	"Erase list of slots"),
+	ARG_ACTION(ACTION_WRITEFLASH,		'f',	"--write-flash",			-1,	"Write list of disks to flash"),
+
+	ARG_FLAG(&force,	0,	"--force",		"Force an operation (depreciated)"),
+	ARG_FLAG(&verbose,	0,	"--verbose",	"More verbose output"),
+
+	ARG_END()
+};
 
 //allocate buffer and read whole file
 bool loadfile(char *filename, uint8_t **buf, int *filesize)
@@ -94,7 +131,7 @@ bool loadfile(char *filename, uint8_t **buf, int *filesize)
 	return(true);
 }
 
-#if defined(WIN32)
+#if !defined(WIN32) && !defined(WIN64)
 #include <unistd.h>
 #else
 #include <io.h>
@@ -163,155 +200,10 @@ static void usage(char *argv0)
 	printf("\n  usage: %s <options> <command> <file(s)>\n\n%s", "fdsemu-cli", usagestr);
 }
 
-bool upload_firmware(uint8_t *firmware, int filesize, int useflash)
-{
-	uint8_t *buf;
-	uint32_t *buf32;
-	uint32_t chksum;
-	int i;
-
-	//create new buffer to hold 32kb of data and clear it
-	buf = new uint8_t[0x8000];
-	memset(buf, 0, 0x8000);
-
-	//copy firmware loaded to the new buffer
-	memcpy(buf, firmware, filesize);
-	buf32 = (uint32_t*)buf;
-
-	//insert firmware identifier
-	buf32[(0x8000 - 8) / 4] = 0xDEADBEEF;
-
-	//calculate the simple xor checksum
-	chksum = 0;
-	for (i = 0; i < (0x8000 - 4); i += 4) {
-		chksum ^= buf32[i / 4];
-	}
-
-	printf("firmware is %d bytes, checksum is $%08X\n", filesize, chksum);
-
-	//insert checksum into the image
-	buf32[(0x8000 - 4) / 4] = chksum;
-
-	//newer firmwares store the firmware image in sram to be updated
-	if ((dev.Version > 792) && (useflash == 0)) {
-		printf("uploading new firmware to sram\n");
-		if (!dev.Sram->Write(buf, 0x0000, 0x8000)) {
-			printf("Write failed.\n");
-			return false;
-		}
-	}
-
-	//older firmware store the firmware image into flash memory
-	else {
-		printf("uploading new firmware to flash");
-		if (!dev.Flash->Write(buf, 0x8000, 0x8000, 0)) {
-			printf("Write failed.\n");
-			return false;
-		}
-		printf("\n");
-	}
-	delete[] buf;
-
-	printf("waiting for device to reboot\n");
-
-	dev.UpdateFirmware();
-	sleep_ms(5000);
-
-	if (!dev.Open()) {
-		printf("Open failed.\n");
-		return false;
-	}
-	printf("Updated to build %d\n", dev.Version);
-	return(true);
-}
-
-bool upload_bootloader(uint8_t *firmware, int filesize)
-{
-	uint8_t *buf;
-	uint32_t *buf32;
-	uint32_t oldcrc,crc;
-
-	if (filesize > 0x1000) {
-		printf("bootloader too large\n");
-		return(false);
-	}
-
-	//get old crc
-	oldcrc = dev.VerifyBootloader();
-
-	//create new buffer to hold 4kb + 8 of data and clear it
-	buf = new uint8_t[0x1000 + 8];
-	memset(buf, 0, 0x1000 + 8);
-
-	//copy firmware loaded to the new buffer
-	memcpy(buf, firmware, filesize);
-	buf32 = (uint32_t*)buf;
-
-	//insert firmware identifier
-	buf32[(0x1000) / 4] = 0xCAFEBABE;
-
-	//calculate the crc32 checksum
-	crc = crc32(buf, 0x1000 + 4);
-
-	printf("bootloader is %d bytes, checksum is $%08X\n", filesize, crc);
-
-	//insert checksum into the image
-	buf32[(0x1000 + 4) / 4] = crc;
-
-	printf("uploading new bootloader to sram\n");
-	if (!dev.Sram->Write(buf, 0x0000, 0x1000 + 8)) {
-		printf("Write failed.\n");
-		return false;
-	}
-
-	delete[] buf;
-
-	dev.UpdateBootloader();
-	
-	printf("Updated bootloader, old crc = %08X, new crc = %08X\n", oldcrc, crc);
-	return(true);
-}
-
-bool firmware_update(char *filename, int useflash)
-{
-	uint8_t *firmware;
-	int filesize;
-	bool ret = false;
-
-	//try to load the firmware image
-	if (loadfile(filename, &firmware, &filesize) == false) {
-		printf("Error loading firmware file %s'\n", filename);
-		return(false);
-	}
-
-	ret = upload_firmware(firmware, filesize, useflash);
-
-	delete[] firmware;
-	return(ret);
-}
-
-bool bootloader_update(char *filename)
-{
-	uint8_t *bootloader;
-	int filesize;
-	bool ret = false;
-
-	//try to load the firmware image
-	if (loadfile(filename, &bootloader, &filesize) == false) {
-		printf("Error loading bootloader file %s'\n", filename);
-		return(false);
-	}
-
-	ret = upload_bootloader(bootloader, filesize);
-
-	delete[] bootloader;
-	return(ret);
-}
-
 uint8_t *find_string(uint8_t *str, uint8_t *buf, int len)
 {
 	int identlen = strlen((char*)str);
-	uint8_t byte, *ptr = buf;
+	uint8_t *ptr = buf;
 	int i;
 	uint8_t *ret = 0;
 
@@ -604,43 +496,6 @@ extern unsigned char firmware[];
 extern unsigned char bootloader[];
 extern int firmware_length;
 extern int bootloader_length;
-
-typedef struct arg_s {
-	int action;
-	char cshort;
-	char clong[32];
-	int numparams;
-	int *flagptr;
-	char description[256];
-} arg_t;
-
-#define ARG_ACTION(ac,sh,lo,np,de)		{ac,sh,lo,np,0,de}
-#define ARG_FLAG(va,sh,lo,de)			{-1,sh,lo,0,va,de}
-#define ARG_END()						{0,0,"",0,0,""}
-
-arg_t args[] = {
-	ARG_ACTION	(ACTION_HELP,				'h',	"--help",					0,	"Display this message"),
-	ARG_ACTION	(ACTION_LIST,				'l',	"--list",					0,	"List all disks stored in flash"),
-	ARG_ACTION	(ACTION_SELFTEST,			0,		"--self-test",				0,	"Perform FDSemu self-test"),
-	ARG_ACTION	(ACTION_CHIPERASE,			0,		"--chip-erase",				0,	"Erase entire flash chip"),
-	ARG_ACTION	(ACTION_UPDATEFIRMWARE,		0,		"--update-firmware",		1,	"Update firmware from file (using sram)"),
-	ARG_ACTION	(ACTION_UPDATEFIRMWARE2,	0,		"--update-firmware-flash",	1,	"Update firmware from file (using flash)"),
-	ARG_ACTION	(ACTION_UPDATEBOOTLOADER,	0,		"--update-bootloader",		1,	"Update bootloader from file"),
-
-	ARG_ACTION	(ACTION_WRITEDISK,			'w',	"--write-disk",				-1,	"Write disk from disk image"),
-	ARG_ACTION	(ACTION_READDISK,			'r',	"--read-disk",				1,	"Read disk to fwNES format"),
-	ARG_ACTION	(ACTION_READDISKBIN,		0,		"--read-disk-bin",			1,	"Read disk to bin format"),
-	ARG_ACTION	(ACTION_READDISKRAW,		0,		"--read-disk-raw",			1,	"Read disk to raw format"),
-	ARG_ACTION	(ACTION_READDISKDOCTOR,		0,		"--read-disk-doctor",		1,	"Read disk to game doctor format"),
-
-	ARG_ACTION	(ACTION_ERASEFLASH,			'e',	"--erase",					-1,	"Erase list of slots"),
-	ARG_ACTION	(ACTION_WRITEFLASH,			'f',	"--write-flash",			-1,	"Write list of disks to flash"),
-
-	ARG_FLAG	(&force,	0,	"--force",		"Force an operation (depreciated)"),
-	ARG_FLAG	(&verbose,	0,	"--verbose",	"More verbose output"),
-
-	ARG_END()
-};
 
 int main(int argc, char *argv[])
 {

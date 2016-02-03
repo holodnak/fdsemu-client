@@ -178,6 +178,7 @@
     <ClCompile Include="..\diskrw.cpp" />
     <ClCompile Include="..\diskutil.cpp" />
     <ClCompile Include="..\flashrw.cpp" />
+    <ClCompile Include="..\fwupdate.cpp" />
     <ClCompile Include="..\main.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -197,6 +198,7 @@
     <ClInclude Include="..\diskrw.h" />
     <ClInclude Include="..\diskutil.h" />
     <ClInclude Include="..\flashrw.h" />
+    <ClInclude Include="..\fwupdate.h" />
     <ClInclude Include="..\main.h" />
     <ClInclude Include="..\version.h" />
   </ItemGroup>
