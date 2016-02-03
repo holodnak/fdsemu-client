@@ -1,4 +1,5 @@
 *.o
+*.bat
 *.exe
 *.dll
 *.bin
@@ -18,6 +19,8 @@
 cli/vs2015/Debug
 cli/vs2015/Release
 cli/vs2015/.vs
+cli/vs2015/x64
+cli/gd
 cli/fdsemu-cli
 
 qt/ui_*.h
@@ -25,4 +28,6 @@ qt/debug
 qt/release
 qt/Makefile*
 qt/object_script*
+
+fw
 

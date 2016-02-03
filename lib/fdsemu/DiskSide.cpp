@@ -1,5 +1,13 @@
 #include "DiskSide.h"
 
+CDiskBlock::CDiskBlock()
+{
+}
+
+CDiskBlock::~CDiskBlock()
+{
+}
+
 CDiskSide::CDiskSide()
 {
 	this->fds = 0;

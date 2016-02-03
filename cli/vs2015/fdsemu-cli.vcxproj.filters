@@ -66,6 +66,18 @@
     <ClCompile Include="..\..\lib\firmware.cpp">
       <Filter>lib</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\lib\bootloader.cpp">
+      <Filter>lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\diskutil.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\diskrw.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\flashrw.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\lib\fdsemu\Device.h">
@@ -109,6 +121,18 @@
     </ClInclude>
     <ClInclude Include="..\..\lib\crc32.h">
       <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\diskrw.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\diskutil.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\flashrw.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\main.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
