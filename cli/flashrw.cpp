@@ -21,7 +21,7 @@ int decompress_lz4(uint8_t *src, uint8_t *dest, int srclen, int destlen)
 	uint8_t token, tmp;
 	int inlen = 0;
 	int outlen = 0;
-	uint16_t offset;
+	uint32_t offset;
 	uint32_t n;
 
 	inlen += 4;
@@ -136,16 +136,17 @@ bool read_flash(char *filename_fds, int slot)
 		//check image flags
 		if (bin[248] & 0x80) {
 			int srclen = bin[240] | (bin[241] << 8);
+			int destlen;
 			char filename[512];
 			FILE *fp;
 			uint8_t *output = (uint8_t*)malloc(0x20000);
 
-			printf("Image is compressed...\n");
 			memset(output, 0, 0x20000);
-			decompress_lz4(bin + 256, output, srclen, 0x20000);
+			destlen = decompress_lz4(bin + 256, output, srclen, 0x20000);
+			printf("Decompressing image (%d -> %d)...\n",srclen,destlen);
 			sprintf(filename, "%s.bin.%c", filename_fds, 'A' + side);
 			fp = fopen(filename, "wb");
-			fwrite(output, 1, 0x20000, fp);
+			fwrite(output, 1, destlen, fp);
 			fclose(fp);
 			free(output);
 		}
