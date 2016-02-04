@@ -20,7 +20,7 @@ char host[] = "Win64";
 #elif defined __linux__
 char host[] = "Linux";
 #elif defined(__APPLE__)
-char host[] = "OSX"
+char host[] = "OSX";
 #else
 char host[] = "Unknown";
 #endif

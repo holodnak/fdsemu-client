@@ -959,6 +959,11 @@ int HID_API_EXPORT hid_get_feature_report(hid_device *dev, unsigned char *data, 
 	                           kIOHIDReportTypeFeature,
 	                           data[0], /* Report ID */
 	                           data, &len);
+	/* bytes_returned does not include the first byte which contains the
+	report ID. The data buffer actually contains one more byte than
+	bytes_returned. */
+	len++;
+
 	if (res == kIOReturnSuccess)
 		return len;
 	else
