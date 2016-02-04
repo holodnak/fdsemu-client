@@ -318,6 +318,6 @@ uint32_t CDevice::VerifyBootloader()
 	crc |= hidbuf[2] << 8;
 	crc |= hidbuf[3] << 16;
 	crc |= hidbuf[4] << 24;
-//	printf("bootloader crc32 = %08X\n", crc);
+//	printf("bootloader crc32 = %08X, reportlen = %d\n", crc,ret);
 	return(ret == 6 ? crc : 0);
 }

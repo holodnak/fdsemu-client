@@ -754,6 +754,10 @@ int HID_API_EXPORT hid_get_feature_report(hid_device *dev, unsigned char *data, 
 	if (res < 0)
 		perror("ioctl (GFEATURE)");
 
+	/* bytes_returned does not include the first byte which contains the
+	   report ID. The data buffer actually contains one more byte than
+	   bytes_returned. */
+	res++;
 
 	return res;
 }
