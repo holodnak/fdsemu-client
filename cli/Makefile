@@ -2,7 +2,7 @@ CC = gcc
 CXX = g++
 LD = gcc
 
-UNAME = $(shell uname)
+UNAME ?= $(shell uname)
 
 CFLAGS = -O2 -I../lib/lz4 -I../lib/hidapi/hidapi -I../lib/fdsemu -I../lib
 LIBS = -lsetupapi
