@@ -1,0 +1,145 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="lib">
+      <UniqueIdentifier>{bd322646-02cd-4e49-8f69-808ae7a1dcd6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lib\lz4">
+      <UniqueIdentifier>{b0daa87a-f27f-46f5-8ba9-1a32cfa9ccba}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lib\hidapi">
+      <UniqueIdentifier>{119e3455-5a62-4d08-b224-dcca8cbb11e6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lib\fdsemu">
+      <UniqueIdentifier>{3f6e5a4c-d54c-41eb-b8ae-dac93afecfd4}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\lib\lz4\lz4.c">
+      <Filter>lib\lz4</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lib\lz4\lz4frame.c">
+      <Filter>lib\lz4</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lib\lz4\lz4hc.c">
+      <Filter>lib\lz4</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lib\lz4\xxhash.c">
+      <Filter>lib\lz4</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lib\hidapi\windows\hid.c">
+      <Filter>lib\hidapi</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lib\fdsemu\Device.cpp">
+      <Filter>lib\fdsemu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lib\fdsemu\Flash.cpp">
+      <Filter>lib\fdsemu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lib\fdsemu\FlashUtil.cpp">
+      <Filter>lib\fdsemu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lib\fdsemu\Sram.cpp">
+      <Filter>lib\fdsemu</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lib\fdsemu\System.cpp">
+      <Filter>lib\fdsemu</Filter>
+    </ClCompile>
+    <ClCompile Include="fdsemu-diskrw.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\cli\diskrw.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\cli\diskutil.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\cli\flashrw.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\cli\fwupdate.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lib\crc32.cpp">
+      <Filter>lib</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\lib\lz4\lz4.h">
+      <Filter>lib\lz4</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\lz4\lz4frame.h">
+      <Filter>lib\lz4</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\lz4\lz4frame_static.h">
+      <Filter>lib\lz4</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\lz4\lz4hc.h">
+      <Filter>lib\lz4</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\lz4\xxhash.h">
+      <Filter>lib\lz4</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\fdsemu\Device.h">
+      <Filter>lib\fdsemu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\fdsemu\Flash.h">
+      <Filter>lib\fdsemu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\fdsemu\FlashUtil.h">
+      <Filter>lib\fdsemu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\fdsemu\Sram.h">
+      <Filter>lib\fdsemu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\fdsemu\System.h">
+      <Filter>lib\fdsemu</Filter>
+    </ClInclude>
+    <ClInclude Include="fdsemu-diskrw.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="targetver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\cli\diskrw.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\cli\diskutil.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\cli\flashrw.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\cli\fwupdate.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\crc32.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="fdsemu-diskrw.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="icon1.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+</Project>
