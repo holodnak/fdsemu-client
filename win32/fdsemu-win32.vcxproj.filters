@@ -25,6 +25,15 @@
     <Filter Include="lib\fdsemu">
       <UniqueIdentifier>{3f6e5a4c-d54c-41eb-b8ae-dac93afecfd4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\common">
+      <UniqueIdentifier>{35318da6-a802-40ae-9567-bb90bc08c6f5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\dialogs">
+      <UniqueIdentifier>{45b0e1b2-86ca-4208-a9cc-d6bd7ede0a49}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\fdsemu">
+      <UniqueIdentifier>{e0471a26-b0b9-4bcf-9caa-9c06d9a451ba}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\lib\lz4\lz4.c">
@@ -60,20 +69,35 @@
     <ClCompile Include="fdsemu-diskrw.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\cli\diskrw.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\cli\diskutil.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\cli\flashrw.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\cli\fwupdate.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\lib\crc32.cpp">
       <Filter>lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\cli\diskrw.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\cli\diskutil.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\cli\flashrw.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\cli\fwupdate.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="readdiskdlg.cpp">
+      <Filter>Source Files\dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="writediskdlg.cpp">
+      <Filter>Source Files\dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="Disk.cpp">
+      <Filter>Source Files\fdsemu</Filter>
+    </ClCompile>
+    <ClCompile Include="DiskSide.cpp">
+      <Filter>Source Files\fdsemu</Filter>
+    </ClCompile>
+    <ClCompile Include="Fdsemu.cpp">
+      <Filter>Source Files\fdsemu</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -116,20 +140,29 @@
     <ClInclude Include="targetver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\cli\diskrw.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\cli\diskutil.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\cli\flashrw.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\cli\fwupdate.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\lib\crc32.h">
       <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\cli\diskrw.h">
+      <Filter>Source Files\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\cli\diskutil.h">
+      <Filter>Source Files\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\cli\fwupdate.h">
+      <Filter>Source Files\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\cli\flashrw.h">
+      <Filter>Source Files\common</Filter>
+    </ClInclude>
+    <ClInclude Include="Disk.h">
+      <Filter>Source Files\fdsemu</Filter>
+    </ClInclude>
+    <ClInclude Include="DiskSide.h">
+      <Filter>Source Files\fdsemu</Filter>
+    </ClInclude>
+    <ClInclude Include="Fdsemu.h">
+      <Filter>Source Files\fdsemu</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -9,6 +9,9 @@ CFlashUtil::CFlashUtil(CDevice *d)
 
 CFlashUtil::~CFlashUtil()
 {
+	if (headers) {
+		delete[] headers;
+	}
 }
 
 bool CFlashUtil::ReadHeaders()

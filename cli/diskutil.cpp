@@ -5,7 +5,92 @@
 #include "Device.h"
 #include "diskutil.h"
 
-uint8_t raw_to_raw03_byte(uint8_t raw)
+#include <stdio.h>
+#include <stdarg.h>
+
+typedef struct message_s {
+	char *str;
+	struct message_s *next;
+} message_t;
+
+static message_t *messages = 0;
+
+void messages_add(char *str)
+{
+	message_t *m, *msg = new message_t;
+
+	msg->str = strdup(str);
+	msg->next = 0;
+	if (messages == 0) {
+		messages = msg;
+	}
+	else {
+		m = messages;
+		while (m->next) {
+			m = m->next;
+		}
+		m->next = msg;
+	}
+}
+
+void messages_clear()
+{
+	message_t *pm, *m = messages;
+
+	while (m) {
+		pm = m;
+		m = m->next;
+		free(pm->str);
+		delete pm;
+	}
+	messages = 0;
+}
+
+char *messages_get()
+{
+	message_t *m = messages;
+	int len = 0;
+	char *ret;
+
+	while (m) {
+		len += strlen(m->str);
+		m = m->next;
+	}
+	m = messages;
+	ret = (char*)malloc(len + 1);
+	memset(ret, 0, len + 1);
+	while (m) {
+		strcat(ret, m->str);
+		m = m->next;
+	}
+	return(ret);
+}
+
+void messages_printf(char str[], ...)
+{
+	char buffer[256];
+
+	va_list args;
+	va_start(args, str);
+	vsprintf(buffer, str, args);
+	messages_add(buffer);
+	va_end(args);
+}
+
+uint8_t raw_to_raw03_byte_48mhz(uint8_t raw)
+{
+	if (raw < 0x28)
+		return(3);
+	else if (raw < 0x4D)
+		return(0);
+	else if (raw < 0x6D)
+		return(1);
+	else if (raw < 0x8D)
+		return(2);
+	return(3);
+}
+
+uint8_t raw_to_raw03_byte_72mhz(uint8_t raw)
 {
 	if (raw < 0x40)
 		return(3);
@@ -18,10 +103,22 @@ uint8_t raw_to_raw03_byte(uint8_t raw)
 	return(3);
 }
 
+int get_mcu_clock();
+
+//wow what a kludge :(
+uint8_t raw_to_raw03_byte(uint8_t raw)
+{
+	if (get_mcu_clock() == 48) {
+		return(raw_to_raw03_byte_48mhz(raw));
+	}
+	return(raw_to_raw03_byte_72mhz(raw));
+}
+
 //Turn raw data from adapter to pulse widths (0..3)
 //Input capture clock is 6MHz.  At 96.4kHz (FDS bitrate), 1 bit ~= 62 clocks
 //We could be clever about this and account for drive speed fluctuations, etc. but this will do for now
 void raw_to_raw03(uint8_t *raw, int rawSize) {
+	printf("mcu clock = %d\n", get_mcu_clock());
 	for (int i = 0; i<rawSize; ++i) {
 		raw[i] = raw_to_raw03_byte(raw[i]);
 	}
@@ -47,7 +144,7 @@ void copy_block(uint8_t *dst, uint8_t *src, int size) {
 	uint32_t crc = calc_crc(dst + 1, size + 2);
 	dst[size + 1] = crc;
 	dst[size + 2] = crc >> 8;
-	//	printf("copying block type %d, size = %d, crc = %04X\n", dst[1],size + 2, crc);
+//	messages_printf("copying block type %d, size = %d, crc = %04X\r\n", dst[1],size + 2, crc);
 }
 
 //Adds GAP + GAP end (0x80) + CRCs to .FDS image
@@ -57,7 +154,7 @@ int fds_to_bin(uint8_t *dst, uint8_t *src, int dstSize) {
 
 	//check *NINTENDO-HVC* header
 	if (src[0] != 0x01 || src[1] != 0x2a || src[2] != 0x4e) {
-		printf("Not an FDS file.\n");
+		messages_printf("Not an FDS file.\r\n");
 		return 0;
 	}
 	memset(dst, 0, dstSize);
@@ -76,7 +173,7 @@ int fds_to_bin(uint8_t *dst, uint8_t *src, int dstSize) {
 	while (src[i] == 3) {
 		int size = (src[i + 13] | (src[i + 14] << 8)) + 1;
 		if (o + 16 + 3 + GAP + size + 3 > dstSize) {    //end + block3 + crc + gap + end + block4 + crc
-			printf("Out of space (%d bytes short), adjust GAP size?\n", (o + 16 + 3 + GAP + size + 3) - dstSize);
+			messages_printf("Out of space (%d bytes short), adjust GAP size?\r\n", (o + 16 + 3 + GAP + size + 3) - dstSize);
 			return 0;
 		}
 		copy_block(dst + o, src + i, 16);
@@ -103,12 +200,12 @@ N bytes (block contents, same as .fds)
 int gameDoctor_to_bin(uint8_t *dst, uint8_t *src, int dstSize) {
 	//check for *NINTENDO-HVC* at 0x03 and second block following CRC
 	if (src[3] != 0x01 || src[4] != 0x2a || src[5] != 0x4e || src[0x3d] != 0x02) {
-		printf("Not GD format.\n");
+		messages_printf("Not GD format.\r\n");
 		return 0;
 	}
 	memset(dst, 0, dstSize);
 
-	//	printf("converting image, max size = %d\n", dstSize);
+	//	messages_printf("converting image, max size = %d\r\n", dstSize);
 
 	//block type 1
 	int i = 3, o = 0;
@@ -124,9 +221,9 @@ int gameDoctor_to_bin(uint8_t *dst, uint8_t *src, int dstSize) {
 	//block type 3+4...
 	while (src[i] == 3) {
 		int size = (src[i + 13] | (src[i + 14] << 8)) + 1;
-		//		printf("copying blocks 3+4, size3 = %d, size4 = %d (i = %d, o = %d)\n", 16 + 3, size + 3, i, o);
+		//		messages_printf("copying blocks 3+4, size3 = %d, size4 = %d (i = %d, o = %d)\r\n", 16 + 3, size + 3, i, o);
 		if (o + 16 + 3 + GAP + size + 3 > dstSize) {    //end + block3 + crc + gap + end + block4 + crc
-			printf("Out of space (%d bytes short), adjust GAP size?\n", (o + 16 + 3 + GAP + size + 3) - dstSize);
+			messages_printf("Out of space (%d bytes short), adjust GAP size?\r\n", (o + 16 + 3 + GAP + size + 3) - dstSize);
 			return 0;
 		}
 		copy_block(dst + o, src + i, 16);
@@ -156,7 +253,9 @@ uint32_t chksum_calc(uint8_t *buf, int size)
 static int findFirstBlock(uint8_t *raw) {
 	static const uint8_t dat[] = { 1,0,1,0,0,0,0,0, 0,1,2,2,1,0,1,0, 0,1,1,2,1,1,1,1, 1,1,0,0,1,1,1,0 };
 	int i, len;
-	for (i = 0, len = 0; i<0x2000 * 8; i++) {
+	i = 0;
+	i = 0x700;
+	for (len = 0; i<0x2000 * 8; i++) {
 		if (raw[i] == dat[len]) {
 			if (len == sizeof(dat) - 1)
 				return i - len;
@@ -172,7 +271,7 @@ static int findFirstBlock(uint8_t *raw) {
 
 bool block_decode(uint8_t *dst, uint8_t *src, int *inP, int *outP, int srcSize, int dstSize, int blockSize, char blockType) {
 	if (*outP + blockSize + 2 > dstSize) {
-		printf("Out of space\n");
+		messages_printf("Out of space\r\n");
 		return false;
 	}
 
@@ -198,7 +297,7 @@ bool block_decode(uint8_t *dst, uint8_t *src, int *inP, int *outP, int srcSize, 
 	in++;
 	do {
 		if (in >= srcSize) {   //not necessarily an error, probably garbage at end of disk
-							   //printf("Disk end\n"); 
+							   //messages_printf("Disk end\r\n"); 
 			return false;
 		}
 		switch (src[in] | (bitval << 4)) {
@@ -217,7 +316,7 @@ bool block_decode(uint8_t *dst, uint8_t *src, int *inP, int *outP, int srcSize, 
 			bitval = 1;
 			break;
 		default: //Unexpected value.  Keep going, we'll probably get a CRC warning
-				 //printf("glitch(%d) @ %X(%X.%d)\n", src[in], in, out/8, out%8);
+				 //messages_printf("glitch(%d) @ %X(%X.%d)\r\n", src[in], in, out/8, out%8);
 			out++;
 			bitval = 0;
 			break;
@@ -225,19 +324,19 @@ bool block_decode(uint8_t *dst, uint8_t *src, int *inP, int *outP, int srcSize, 
 		in++;
 	} while (out<outEnd);
 	if (dst[*outP] != blockType) {
-		printf("Wrong block type %X(%X)-%X(%X) (found %d, expected %d)\n", start, *outP, in, out - 1, dst[*outP], blockType);
+		messages_printf("Wrong block type %X(%X)-%X(%X) (found %d, expected %d)\r\n", start, *outP, in, out - 1, dst[*outP], blockType);
 		return false;
 	}
 	out = out / 8 - 2;
 
-	//printf("Out%d %X(%X)-%X(%X)\n", blockType, start, *outP, in, out-1);
+	//messages_printf("Out%d %X(%X)-%X(%X)\r\n", blockType, start, *outP, in, out-1);
 
 	if (calc_crc(dst + *outP, blockSize + 2)) {
 		uint16_t crc1 = (dst[out + 1] << 8) | dst[out];
 		dst[out] = 0;
 		dst[out + 1] = 0;
 		uint16_t crc2 = calc_crc(dst + *outP, blockSize + 2);
-		printf("Bad CRC (%04X!=%04X)\n", crc1, crc2);
+		messages_printf("Bad CRC (%04X!=%04X)\r\n", crc1, crc2);
 	}
 
 	dst[out] = 0;     //clear CRC
@@ -251,7 +350,7 @@ bool block_decode(uint8_t *dst, uint8_t *src, int *inP, int *outP, int srcSize, 
 //Simplified disk decoding.  This assumes disk will follow standard FDS file structure
 bool raw03_to_fds(uint8_t *raw, uint8_t *fds, int rawsize) {
 	int in, out;
-	int dstsize = FDSSIZE + 0x10000;
+	int dstsize = FDSSIZE;
 
 	memset(fds, 0, dstsize);
 
@@ -272,6 +371,51 @@ bool raw03_to_fds(uint8_t *raw, uint8_t *fds, int rawsize) {
 			return true;
 	} while (in<rawsize);
 	return true;
+}
+
+int raw03_to_gd(uint8_t *raw, uint8_t *fds, int rawsize) {
+	int in, out;
+	int dstsize = FDSSIZE + 0x10000;
+
+	memset(fds, 0, dstsize);
+
+	//lead-in can vary a lot depending on drive, scan for first block to get our bearings
+	in = findFirstBlock(raw) - MIN_GAP_SIZE;
+	if (in<0)
+		return false;
+
+	out = 3;
+
+	if (!block_decode(fds, raw, &in, &out, rawsize, dstsize + 2, 0x38, 1))
+		return -1;
+
+	//insert zeros for the false crc bytes in gd image
+	out += 2;
+
+	if (!block_decode(fds, raw, &in, &out, rawsize, dstsize + 2, 2, 2))
+		return -1;
+
+	//fixup the third byte
+	fds[2] = 0x80 | fds[out - 1];
+
+	//insert zeros for the false crc bytes in gd image
+	out += 2;
+
+	do {
+		if (!block_decode(fds, raw, &in, &out, rawsize, dstsize + 2, 16, 3))
+			break;
+
+		//insert zeros for the false crc bytes in gd image
+		out += 2;
+
+		if (!block_decode(fds, raw, &in, &out, rawsize, dstsize + 2, 1 + (fds[out - 18 + 13] | (fds[out - 18 + 14] << 8)), 4))
+			break;
+
+		//insert zeros for the false crc bytes in gd image
+		out += 2;
+
+	} while (in<rawsize);
+	return out;
 }
 
 //make raw0-3 from flash image (sans header)
@@ -379,21 +523,30 @@ static void mark_gap_start(uint8_t *raw, int gapEnd) {
 	{
 	}
 	raw[i + 1] = 3;
-	printf("mark gap %X-%X\n", i + 1, gapEnd);
+	messages_printf("mark gap %X-%X\r\n", i + 1, gapEnd);
 }
 
 //For information only for now.  This checks for standard file format
-static void verify_block(uint8_t *bin, int start, int *reverse) {
-	enum { MAX_GAP = (976 + 100) / 8, MIN_GAP = (976 - 100) / 8 };
+static int verify_block(uint8_t *bin, int start, int *reverse) {
+	enum { MAX_GAP = (976 + 200) / 8, MIN_GAP = (976 - 200) / 8 };
 	static const uint8_t next[] = { 0,2,3,4,3 };
 	static int last = 0;
 	static int lastLen = 0;
 	static int blockCount = 0;
+	static int totalLen = 0;
 
+	//kludge to reset the variables
+	if (bin == 0) {
+		last = 0;
+		lastLen = 0;
+		blockCount = 0;
+		totalLen = 0;
+		return(0);
+	}
 	int len = 0;
 	uint8_t type = bin[start];
 
-	printf("%d:%X", ++blockCount, type);
+	messages_printf("%d:%X", ++blockCount, type);
 
 	switch (type) {
 	case 1:
@@ -409,24 +562,26 @@ static void verify_block(uint8_t *bin, int start, int *reverse) {
 		len = 1 + (bin[last + 13] | (bin[last + 14] << 8));
 		break;
 	default:
-		printf(" bad block (%X)\n", start);
-		return;
+		messages_printf(" bad block (%X)\r\n", start);
+		return(0);
 	}
-	printf(" %X-%X / %X-%X(%X)", reverse[start], reverse[start + len], start, start + len, len);
+	messages_printf(" %X-%X / %X-%X(%X)", reverse[start], reverse[start + len], start, start + len, len);
 
 	if ((!last && type != 1) || (last && type != next[bin[last]]))
-		printf(", wrong filetype");
+		messages_printf(", wrong filetype");
 	if (calc_crc(bin + start, len + 2) != 0)
-		printf(", bad CRC");
+		messages_printf(", bad CRC");
 	if (last && (last + lastLen + MAX_GAP)<start)
-		printf(", lost block?");
+		messages_printf(", lost block?");
 	if (last + lastLen + MIN_GAP>start)
-		printf(", block overlap?");
+		messages_printf(", block overlap?");
 	//if(type==3 && ...)    //check other fields in file header?
 
-	printf("\n");
+	messages_printf("\r\n");
 	last = start;
 	lastLen = len;
+	totalLen += len;
+	return(totalLen);
 }
 
 //find gap + gap end.  returns bit following gap end, >=rawSize if not found.
@@ -450,13 +605,15 @@ Try to create byte-for-byte, unadulterated representation of disk.  Use hints fr
 that it's probably a standard FDS game image but this should still make a best attempt regardless of the disk content.
 
 _bin and _binSize are updated on exit.  alloc'd buffer is returned in _bin, caller is responsible for freeing it.
+
+dataSize is total size of all data on the disk (excluding gaps and gap end marker)
 */
-void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSize) {
+void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSize, int *dataSize) {
 	enum {
 		BINSIZE = 0xa0000,
 		POST_GLITCH_GARBAGE = 16,
 		LONG_POST_GLITCH_GARBAGE = 64,
-		LONG_GAP = 900,   //976 typ.
+		LONG_GAP = 100*8,   //976 typ.
 		SHORT_GAP = 16,
 	};
 	int in, out;
@@ -465,6 +622,8 @@ void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSize) {
 	int glitch;
 	int zeros;
 
+	messages_clear();
+	verify_block(0, 0, 0);
 	bin = (uint8_t*)malloc(BINSIZE);
 	reverse = (int*)malloc(BINSIZE*sizeof(int));
 	memset(bin, 0, BINSIZE);
@@ -475,7 +634,9 @@ void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSize) {
 	glitch = 0;
 	zeros = 0;
 	junk = 0;
-	for (in = 0; in<rawSize; in++) {
+	in = 0;
+//	in = 4096;
+	for (; in<rawSize; in++) {
 		if (raw[in] == 3) {
 			glitch = in;
 			junk = 0;
@@ -498,7 +659,7 @@ void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSize) {
 
 	in = findFirstBlock(raw);
 	if (in>0) {
-		printf("header at %X\n", in);
+		messages_printf("header at %X\r\n", in);
 		mark_gap_start(raw, in - 1);
 	}
 	/*
@@ -517,7 +678,7 @@ void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSize) {
 	if (in>0) do {
 		out = crc_detect(raw, in, rawSize);
 		if (out) {
-			printf("crc found %X-%X\n", in, out);
+			messages_printf("crc found %X-%X\r\n", in, out);
 			raw[out] = 3;     //mark glitch (gap start)
 							  //raw[in-1]=0xff;   //mark gap end 
 		}
@@ -578,7 +739,7 @@ void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSize) {
 			bitval = 1;
 			break;
 		case 0x02:
-			//printf("Encoding error @ %X(%X)\n",in,out/8);
+			//messages_printf("Encoding error @ %X(%X)\r\n",in,out/8);
 		default: //anything else (glitch)
 			out++;
 			bitval = 0;
@@ -587,9 +748,21 @@ void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSize) {
 		reverse[out / 8] = in;
 	}
 	//last block
-	verify_block(bin, lastBlockStart, reverse);
+	*dataSize = verify_block(bin, lastBlockStart, reverse);
 
 	*_bin = bin;
 	*_binSize = out / 8 + 1;
 	free(reverse);
+}
+
+void raw_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSize, int *dataSize) {
+	uint8_t *tmpraw;
+	int i;
+
+	tmpraw = (uint8_t*)malloc(rawSize);
+	for (i = 0; i < rawSize; i++) {
+		tmpraw[i] = raw_to_raw03_byte(raw[i]);
+	}
+	raw03_to_bin(tmpraw, rawSize, _bin, _binSize, dataSize);
+	free(tmpraw);
 }

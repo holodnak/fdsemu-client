@@ -3,8 +3,9 @@
 #include <string.h>
 #include "main.h"
 #include "diskutil.h"
+#include "flashrw.h"
 
-void cli_progress(void *user, uint32_t n)
+void cli_progress(void *user, int bytes, int side)
 {
 	printf(".");
 }
@@ -236,10 +237,12 @@ bool write_flash(char *filename, int slot)
 
 	uint8_t *inbuf = 0;
 	uint8_t *outbuf = 0;
+	uint8_t *verifybuf = 0;
 	int filesize;
 	uint32_t i;
 	char *shortName;
 	TFlashHeader *headers = dev.FlashUtil->GetHeaders();
+	bool ret = true;
 
 	if (headers == 0) {
 		printf("error reading flash headers");
@@ -295,6 +298,7 @@ bool write_flash(char *filename, int slot)
 	printf("Writing disk image to flash slot %d...\n", slot);
 
 	outbuf = new uint8_t[SLOTSIZE];
+	verifybuf = new uint8_t[SLOTSIZE];
 
 	while (pos<filesize && inbuf[pos] == 0x01) {
 		printf("Side %d", side + 1);
@@ -310,6 +314,17 @@ bool write_flash(char *filename, int slot)
 			}
 			if (dev.Flash->Write(outbuf, (slot + side)*SLOTSIZE, SLOTSIZE, cli_progress) == false) {
 				printf("error.\n");
+				ret = false;
+				break;
+			}
+			if (dev.Flash->Read(verifybuf, (slot + side)*SLOTSIZE, SLOTSIZE) == false) {
+				printf("verify error.\n");
+				ret = false;
+				break;
+			}
+			if (memcmp(verifybuf, outbuf, SLOTSIZE) != 0) {
+				printf("verify failed.\n");
+				ret = false;
 				break;
 			}
 			printf("done.\n");
@@ -319,8 +334,9 @@ bool write_flash(char *filename, int slot)
 	}
 	delete[] inbuf;
 	delete[] outbuf;
+	delete[] verifybuf;
 	printf("\n");
-	return true;
+	return ret;
 }
 
 bool load_doctor_disk(uint8_t **buf, int *len, char *file)
@@ -389,9 +405,9 @@ bool load_disk(uint8_t **buf, int *len, char *file)
 	return(true);
 }
 
-#include "lz4.h"       /* still required for legacy format */
-#include "lz4hc.h"     /* still required for legacy format */
-#include "lz4frame.h"
+#include "lz4/lz4.h"       /* still required for legacy format */
+#include "lz4/lz4hc.h"     /* still required for legacy format */
+#include "lz4/lz4frame.h"
 
 /*****************************
 *  Constants
@@ -422,7 +438,7 @@ bool load_disk(uint8_t **buf, int *len, char *file)
 
 static int LZ4IO_GetBlockSize_FromBlockId(int id) { return (1 << (8 + (2 * id))); }
 
-static int compress_lz4(uint8_t *src, int srcsize, uint8_t **dst, int *dstsize)
+int compress_lz4(uint8_t *src, int srcsize, uint8_t **dst, int *dstsize)
 {
 	unsigned long compressedfilesize = 0;
 	const size_t blockSize = (size_t)LZ4IO_GetBlockSize_FromBlockId(LZ4IO_BLOCKSIZEID_DEFAULT);
@@ -527,6 +543,15 @@ bool find_doctors(char *first, char **files, int *numfiles, int maxfiles)
 		}
 		files[n++] = strdup(str);
 	}
+
+	//check for save disk
+	if (n < maxfiles) {
+		str[strlen(str) - 1] = 'S';
+		if (file_exists(str) == true) {
+			files[n++] = strdup(str);
+		}
+	}
+
 	*numfiles = n;
 	return(true);
 }
@@ -539,12 +564,12 @@ bool write_doctor(char *file)
 	uint8_t *ptr;
 	int i, slot;
 	char *shortName;
-	char *files[16];
+	char *files[17];
 	int numfiles = 0;
 	uint8_t *buf, *cbuf;
 	int len, clen;
 
-	if (find_doctors(file, files, &numfiles, 16) == false) {
+	if (find_doctors(file, files, &numfiles, 17) == false) {
 		return(false);
 	}
 
@@ -583,10 +608,24 @@ bool write_doctor(char *file)
 			shortName = get_shortname(files[i]);
 			strncpy((char*)ptr, shortName, 240);
 		}
+
+		//size
 		ptr[240] = (uint8_t)(clen & 0xFF);
 		ptr[241] = (uint8_t)(clen >> 8);
+
+		//leadin
 		ptr[242] = DEFAULT_LEAD_IN & 0xff;
 		ptr[243] = DEFAULT_LEAD_IN / 256;
+
+		//next disk id
+		ptr[244] = 0 & 0xff;
+		ptr[245] = 0 / 256;
+
+		//save disk id
+		ptr[246] = 0 & 0xff;
+		ptr[247] = 0 / 256;
+
+		//flags
 		ptr[248] = 0xC1;		//compressed, read only, game doctor format
 		memcpy(ptr + 256, cbuf, clen);
 		delete[] cbuf;
@@ -634,3 +673,28 @@ bool write_doctor(char *file)
 	return(true);
 }
 
+bool is_gamedoctor(char *filename)
+{
+	uint8_t *buf = 0;
+	int len = 0;
+	bool ret = false;
+
+	//make sure it is valid filename
+	if (file_exists(filename) == true) {
+
+		//check file extension
+		if (filename[strlen(filename) - 1] == 'A' || filename[strlen(filename) - 1] == 'a') {
+
+			//load the file
+			if (loadfile(filename, &buf, &len) == true) {
+
+				//verify header
+				if (buf[3] == 0x01 && buf[4] == 0x2a && buf[5] == 0x4e && buf[0x3d] == 0x02) {
+					ret = true;
+				}
+				delete[] buf;
+			}
+		}
+	}
+	return(ret);
+}

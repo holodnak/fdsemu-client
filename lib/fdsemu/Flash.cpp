@@ -63,7 +63,7 @@ bool CFlash::Read(uint8_t *buf, uint32_t addr, int size, TCallback cb, void *use
 		buf += SPI_READMAX;
         if((n % (SPI_READMAX * 100)) == 0) {
             if(cb) {
-                cb(user, n);
+                cb(user, n, -1);
             }
         }
 	}
@@ -90,7 +90,7 @@ bool CFlash::Write(uint8_t *buf, uint32_t addr, int size, TCallback cb, void *us
 		}
 		if ((addr + i) % 0x1000 == 0) {
 			if (cb) {
-				cb(user, i);
+				cb(user, 2, i);
 			}
 		}
 	}

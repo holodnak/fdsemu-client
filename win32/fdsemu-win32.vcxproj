@@ -161,7 +161,12 @@
     <ClCompile Include="..\lib\lz4\lz4frame.c" />
     <ClCompile Include="..\lib\lz4\lz4hc.c" />
     <ClCompile Include="..\lib\lz4\xxhash.c" />
+    <ClCompile Include="Disk.cpp" />
+    <ClCompile Include="DiskSide.cpp" />
     <ClCompile Include="fdsemu-diskrw.cpp" />
+    <ClCompile Include="Fdsemu.cpp" />
+    <ClCompile Include="readdiskdlg.cpp" />
+    <ClCompile Include="writediskdlg.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\cli\diskrw.h" />
@@ -179,7 +184,10 @@
     <ClInclude Include="..\lib\lz4\lz4frame_static.h" />
     <ClInclude Include="..\lib\lz4\lz4hc.h" />
     <ClInclude Include="..\lib\lz4\xxhash.h" />
+    <ClInclude Include="Disk.h" />
+    <ClInclude Include="DiskSide.h" />
     <ClInclude Include="fdsemu-diskrw.h" />
+    <ClInclude Include="Fdsemu.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>

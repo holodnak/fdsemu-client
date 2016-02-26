@@ -60,9 +60,14 @@ bool FDS_readDisk(char *filename_raw, char *filename_bin, char *filename_fds) {
 	}
 	else if (filename_bin) {
 		uint8_t *binBuf;
-		int binSize;
+		int binSize, dataSize;
+		char *output;
 
-		raw03_to_bin(readBuf, bytesIn, &binBuf, &binSize);
+		raw03_to_bin(readBuf + 3400, bytesIn - 3400, &binBuf, &binSize, &dataSize);
+		output = messages_get();
+		if (output) {
+			printf(output);
+		}
 		if ((f = fopen(filename_bin, "wb"))) {
 			fwrite(binBuf, 1, binSize, f);
 			fclose(f);

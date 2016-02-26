@@ -5,6 +5,79 @@
 #include "crc32.h"
 #include "System.h"
 
+int detect_firmware_build(uint8_t *fw, int len)
+{
+	const char ident[] = "NUC123-FDSemu Firmware by James Holodnak";
+	int identlen = strlen(ident);
+	uint8_t *ptr = fw;
+	int i;
+	int ret = -1;
+
+	for (i = 0; i < (len - identlen); i++, fw++) {
+
+		//first byte is a match, continue checking
+		if (*fw == (uint8_t)ident[0]) {
+
+			//check for match
+			if (memcmp(fw, ident, identlen) == 0) {
+				ret = *(fw + identlen);
+				ret |= *(fw + identlen + 1) << 8;
+				break;
+			}
+		}
+	}
+	return(ret);
+}
+
+int detect_bootloader_version(uint8_t *fw, int len)
+{
+	const char ident[] = "*BOOT2*";
+	int identlen = strlen(ident);
+	uint8_t *ptr = fw;
+	int i;
+	int ret = -1;
+
+	for (i = 0; i < (len - identlen); i++, fw++) {
+
+		//first byte is a match, continue checking
+		if (*fw == (uint8_t)ident[0]) {
+
+			//check for match
+			if (memcmp(fw, ident, identlen) == 0) {
+				ret = *(fw + identlen);
+				break;
+			}
+		}
+	}
+	return(ret);
+}
+
+uint32_t bootloader_get_crc32(uint8_t *fw, int len)
+{
+	uint8_t *buf;
+	uint32_t *buf32;
+	uint32_t crc;
+
+	if (len > 4096) {
+		printf("bootloader image is too large.\n");
+		return(0);
+	}
+	buf = new uint8_t[4096 + 8];
+	buf32 = (uint32_t*)buf;
+	memset(buf, 0, 4096 + 8);
+	memcpy(buf, fw, len);
+
+	//insert id
+	buf32[(0x1000) / 4] = 0xCAFEBABE;
+
+	//calculate the crc32 checksum
+	crc = crc32(buf, 0x1000 + 4);
+
+	delete[] buf;
+
+	return(crc);
+}
+
 bool upload_firmware(uint8_t *firmware, int filesize, int useflash)
 {
 	uint8_t *buf;
@@ -126,7 +199,13 @@ bool firmware_update(char *filename, int useflash)
 		return(false);
 	}
 
-	ret = upload_firmware(firmware, filesize, useflash);
+	if (detect_firmware_build(firmware, filesize) == -1) {
+		printf("Firmware image is invalid.\n");
+	}
+
+	else {
+		ret = upload_firmware(firmware, filesize, useflash);
+	}
 
 	delete[] firmware;
 	return(ret);
@@ -144,7 +223,12 @@ bool bootloader_update(char *filename)
 		return(false);
 	}
 
-	ret = upload_bootloader(bootloader, filesize);
+	if (detect_bootloader_version(bootloader, filesize) == -1) {
+		printf("Bootloader image is invalid.\n");
+	}
+	else {
+		ret = upload_bootloader(bootloader, filesize);
+	}
 
 	delete[] bootloader;
 	return(ret);

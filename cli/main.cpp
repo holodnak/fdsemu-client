@@ -27,32 +27,42 @@ char host[] = "Unknown";
 
 CDevice dev;
 
-enum {
-	ACTION_INVALID = -1,
+int get_mcu_clock()
+{
+	return(dev.Clock);
+}
 
+enum {
+
+	ACTION_GROUP_FLASH = 100,
+	ACTION_GROUP_DISK = 200,
+	ACTION_GROUP_FIRMWARE = 300,
+	ACTION_GROUP_MISC = 400,
+
+	ACTION_INVALID = -1,
 	ACTION_NONE = 0,
 	ACTION_HELP,
 	ACTION_CONVERT,
 
-	ACTION_LIST,
+	ACTION_LIST = ACTION_GROUP_FLASH,
 	ACTION_READFLASH,
 	ACTION_READFLASHRAW,
 	ACTION_WRITEFLASH,
 	ACTION_WRITEDOCTORFLASH,
 	ACTION_ERASEFLASH,
 
-	ACTION_READDISK,
+	ACTION_READDISK = ACTION_GROUP_DISK,
 	ACTION_READDISKRAW,
 	ACTION_READDISKBIN,
 	ACTION_READDISKDOCTOR,
 	ACTION_WRITEDISK,
 
-	ACTION_UPDATEFIRMWARE,
+	ACTION_UPDATEFIRMWARE = ACTION_GROUP_FIRMWARE,
 	ACTION_UPDATEFIRMWARE2,
 	ACTION_UPDATEBOOTLOADER,
 	ACTION_UPDATELOADER,
 
-	ACTION_CHIPERASE,
+	ACTION_CHIPERASE = ACTION_GROUP_MISC,
 	ACTION_SELFTEST,
 	ACTION_VERIFY,
 };
@@ -235,33 +245,6 @@ bool bootloader_is_valid(uint8_t *fw, int len)
 	return(buf == 0 ? false : true);
 }
 
-uint32_t bootloader_get_crc32(uint8_t *fw, int len)
-{
-	uint8_t *buf;
-	uint32_t *buf32;
-	uint32_t crc;
-
-	if (len > 4096) {
-		printf("bootloader image is too large.\n");
-		return(0);
-	}
-	buf = new uint8_t[4096 + 8];
-	buf32 = (uint32_t*)buf;
-	memset(buf, 0, 4096 + 8);
-	memcpy(buf, fw, len);
-
-	//insert id
-	buf32[(0x1000) / 4] = 0xCAFEBABE;
-
-	//calculate the crc32 checksum
-	crc = crc32(buf, 0x1000 + 4);
-
-	delete[] buf;
-
-	return(crc);
-}
-
-
 bool fds_list(int verbose)
 {
 	TFlashHeader *headers = dev.FlashUtil->GetHeaders();
@@ -275,36 +258,71 @@ bool fds_list(int verbose)
 	printf("Listing disks stored in flash:\n");
 
 	for (i=0; i < dev.Slots; i++) {
+		TFlashHeader *header = &headers[i];
+
 		uint8_t *buf = headers[i].filename;
 
 		//verbose listing
 		if (verbose) {
-			if (buf[0] == 0xFF) {          //empty
+
+			//empty slot
+			if (buf[0] == 0xFF) {
 				printf("%d:\n", i);
 				side = 0;
 				empty++;
+				continue;
 			}
-			else if (buf[0] != 0) {      //filename present
-				printf("%d: %s\n", i, buf);
-				side = 1;
+
+			//this disk image has valid ownerid/nextid
+			if (header->flags & 0x20) {
+				side = 0;
+				if (header->ownerid == i) {
+					printf("%d: %s\n", i, buf);
+				}
+				else {
+					printf("%d: child of slot %d\n", i, header->ownerid);
+				}
 			}
-			else if (!side) {          //first side is missing
-				printf("%d: ?\n", i);
-			}
-			else {                    //next side
-				printf("%d:    Side %d\n", i, ++side);
+
+			//old format flash image
+			else {
+				if (buf[0] != 0) {      //filename present
+					printf("%d: %s\n", i, buf);
+					side = 1;
+				}
+				else if (!side) {          //first side is missing
+					printf("%d: ?\n", i);
+				}
+				else {                    //next side
+					printf("%d:    Side %d\n", i, ++side);
+				}
 			}
 		}
 
 		//short listing
 		else {
-			if (buf[0] == 0xFF) {          //empty
+			//empty slot
+			if (buf[0] == 0xFF) {
 				empty++;
+				continue;
 			}
 
-			//filename is here
-			else if (buf[0] != 0) {
-				printf("%d: %s\n", i, buf);
+			//this disk image has valid ownerid/nextid
+			if (header->flags & 0x20) {
+				if (header->ownerid == i) {
+					printf("%d: %s\n", i, buf);
+				}
+			}
+
+			else {
+				if (buf[0] == 0xFF) {          //empty
+					empty++;
+				}
+
+				//filename is here
+				else if (buf[0] != 0) {
+					printf("%d: %s\n", i, buf);
+				}
 			}
 		}
 	}
@@ -391,79 +409,6 @@ bool verify_device()
 	delete[] buf;
 	delete[] buf2;
 	return(ok);
-}
-
-bool is_gamedoctor(char *filename)
-{
-	uint8_t *buf = 0;
-	int len = 0;
-	bool ret = false;
-
-	//make sure it is valid filename
-	if (file_exists(filename) == true) {
-
-		//check file extension
-		if (filename[strlen(filename) - 1] == 'A' || filename[strlen(filename) - 1] == 'a') {
-
-			//load the file
-			if (loadfile(filename, &buf, &len) == true) {
-
-				//verify header
-				if (buf[3] == 0x01 && buf[4] == 0x2a && buf[5] == 0x4e && buf[0x3d] == 0x02) {
-					ret = true;
-				}
-				delete[] buf;
-			}
-		}
-	}
-	return(ret);
-}
-
-int detect_firmware_build(uint8_t *fw, int len)
-{
-	const char ident[] = "NUC123-FDSemu Firmware by James Holodnak";
-	int identlen = strlen(ident);
-	uint8_t *ptr = fw;
-	int i;
-	int ret = -1;
-
-	for (i = 0; i < (len - identlen); i++, fw++) {
-
-		//first byte is a match, continue checking
-		if (*fw == (uint8_t)ident[0]) {
-
-			//check for match
-			if (memcmp(fw, ident, identlen) == 0) {
-				ret = *(fw + identlen);
-				ret |= *(fw + identlen + 1) << 8;
-				break;
-			}
-		}
-	}
-	return(ret);
-}
-
-int detect_bootloader_version(uint8_t *fw, int len)
-{
-	const char ident[] = "*BOOT2*";
-	int identlen = strlen(ident);
-	uint8_t *ptr = fw;
-	int i;
-	int ret = -1;
-
-	for (i = 0; i < (len - identlen); i++, fw++) {
-
-		//first byte is a match, continue checking
-		if (*fw == (uint8_t)ident[0]) {
-
-			//check for match
-			if (memcmp(fw, ident, identlen) == 0) {
-				ret = *(fw + identlen);
-				break;
-			}
-		}
-	}
-	return(ret);
 }
 
 bool erase_slot(int slot)
@@ -702,7 +647,7 @@ int main(int argc, char *argv[])
 		return(2);
 	}
 
-	printf(" Device: %s, %dMB flash (firmware build %d, flashID %06X)\n", dev.DeviceName, dev.FlashSize / 0x100000, dev.Version, dev.FlashID);
+	printf(" Device: %s, %dMB flash (firmware build %d, flashID %06X, mcu %dmhz)\n", dev.DeviceName, dev.FlashSize / 0x100000, dev.Version, dev.FlashID, dev.Clock);
 	printf("\n");
 	if (dev.Version < required_build && action != ACTION_UPDATEFIRMWARE && action != ACTION_UPDATEFIRMWARE2) {
 		char ch;

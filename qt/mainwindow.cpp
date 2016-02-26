@@ -12,6 +12,7 @@
 #include "dumpflashdialog.h"
 #include "Device.h"
 #include "System.h"
+#include "lz4frame_static.h"
 
 #define VERSION_HI 0
 #define VERSION_LO 43

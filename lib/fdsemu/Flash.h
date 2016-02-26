@@ -22,7 +22,11 @@ enum {
 	PAGESIZE = 256,
 };
 
-typedef void(*TCallback)(void*, uint32_t);
+#define CALLBACK_NUMSIDES	0
+#define CALLBACK_SIDESTART	1
+#define CALLBACK_WRITEADDR	2
+
+typedef void(*TCallback)(void*, int, int);
 
 class CFlash
 {

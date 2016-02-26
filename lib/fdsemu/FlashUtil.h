@@ -5,10 +5,18 @@
 
 typedef struct SFlashHeader {
 	uint8_t filename[240];		//filename of disk in flash (if first slot)
-	uint32_t checksum;			//xor checksum of disk data
-	uint16_t leadin;				//leadin size of disk
-	uint16_t nextslot;			//slot of next disk side of the disk image
-	uint8_t reserved[8];			//reserved for future expansion
+	uint16_t	size;					//size of data stored in the block
+	uint16_t	ownerid;				//id of first slot of this game
+	uint16_t	nextid;				//id of next block in disk chain
+	uint16_t	saveid;				//id of "save disk" for game doctor
+	uint8_t flags;					//disk flags cris-00tt
+										// c = compressed
+										// r = read only
+										// i = owner id/next id fields are VALID
+										// s = saveid field is VALID
+										// t = type
+	uint8_t flags2;
+	uint8_t reserved[6];
 } TFlashHeader;
 
 class CFlashUtil

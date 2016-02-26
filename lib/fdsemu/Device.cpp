@@ -9,6 +9,7 @@
 
 CDevice::CDevice()
 {
+	handle = 0;
 }
 
 
@@ -20,6 +21,7 @@ CDevice::~CDevice()
 bool CDevice::Open()
 {
 	struct hid_device_info *devs, *dev;
+	char serial[64];
 
 	//ensure device isnt open
 	Close();
@@ -50,6 +52,16 @@ bool CDevice::Open()
 			printf("Device opened, but product string is null?\n");
 			memset(DeviceName, 0, 256);
 		}
+
+		if (dev->serial_number) {
+			wcstombs(serial, dev->serial_number, 64);
+			serial[2] = 0;
+			Clock = atoi(serial);
+		}
+		else {
+			Clock = 0;
+		}
+
 		VendorID = dev->vendor_id;
 		ProductID = dev->product_id;
 		Version = dev->release_number;
@@ -80,8 +92,17 @@ bool CDevice::Open()
 	return !!this->handle;
 }
 
+bool CDevice::Reopen()
+{
+	this->Close();
+	return(this->Open());
+}
+
 void CDevice::Close()
 {
+	if (this->Sram) {
+		delete this->Sram;
+	}
 	if (this->Flash) {
 		delete this->Flash;
 	}
@@ -91,8 +112,10 @@ void CDevice::Close()
 	if (this->handle) {
 		hid_close(this->handle);
 	}
+	this->Sram = 0;
 	this->Flash = 0;
 	this->FlashUtil = 0;
+	this->Slots = 0;
 	this->handle = NULL;
 }
 
@@ -134,6 +157,7 @@ uint32_t CDevice::GetFlashSize()
 			return(0x1000000);
 
 		//256mbit flash
+		case 0x1940EF: // W25Q128FV
 		case 0x19BA20: // N25Q256A
 			return(0x2000000);
 	}

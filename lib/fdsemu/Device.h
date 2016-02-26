@@ -51,6 +51,15 @@ enum {
 	SLOTSIZE = 65536,
 };
 
+enum {
+	FORMAT_UNKNOWN = -1,
+	FORMAT_RAW = 0,
+	FORMAT_BIN,
+	FORMAT_FDS,
+	FORMAT_GD,
+	FORMAT_SMC
+};
+
 class CSram;
 class CFlash;
 class CFlashUtil;
@@ -62,7 +71,7 @@ private:
 	uint8_t		sequence;
 public:
 	char			DeviceName[256];
-	int			Version;
+	int			Version, Clock;
 	int			VendorID, ProductID;
 	CSram			*Sram;
 	CFlash		*Flash;
@@ -89,6 +98,7 @@ public:
 	virtual ~CDevice();
 
 	bool Open();
+	bool Reopen();
 	void Close();
 
 	//misc device commands

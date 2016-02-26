@@ -10,14 +10,18 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <stdio.h>
+//#include <vld.h>
 #include "fdsemu-diskrw.h"
 #include "Device.h"
 #include "flashrw.h"
+#include "diskutil.h"
+#include "Disk.h"
+#include "Fdsemu.h"
 
 #define MAX_LOADSTRING 100
 
 #define ID_QUIT			2
-#define ID_STATUS		10
+#define ID_STATUS			10
 #define ID_DISKLIST		11
 
 // Global Variables:
@@ -25,47 +29,23 @@ HINSTANCE hInst;                                // current instance
 CHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 CHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
 
-// Forward declarations of functions included in this code module:
+															  // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    ReadDiskDlg(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK    WriteDiskDlg(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK    WriteImagesDlg(HWND, UINT, WPARAM, LPARAM);
 
 CDevice dev;
 
-//allocate buffer and read whole file
-bool loadfile(char *filename, uint8_t **buf, int *filesize)
+int get_mcu_clock()
 {
-	FILE *fp;
-	int size;
-	bool result = false;
-
-	//check if the pointers are ok
-	if (buf == 0 || filesize == 0) {
-		return(false);
-	}
-
-	//open file
-	if ((fp = fopen(filename, "rb")) == 0) {
-		return(false);
-	}
-
-	//get file size
-	fseek(fp, 0, SEEK_END);
-	size = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-
-	//allocate buffer
-	*buf = (uint8_t*)malloc(size);
-
-	//read in file
-	*filesize = fread(*buf, 1, size, fp);
-
-	//close file and return
-	fclose(fp);
-	return(true);
+	return(dev.Clock);
 }
+
+//CDisk disk;
 
 #include <io.h>
 #ifndef F_OK
@@ -81,245 +61,6 @@ bool file_exists(char *fn)
 	return(false);
 }
 
-typedef struct disk_s {
-	uint8_t *raw;
-	int rawsize;
-	int datasize;
-} disk_t;
-
-enum {
-	FORMAT_RAW = 0,
-	FORMAT_BIN,
-	FORMAT_FDS,
-	FORMAT_GD,
-	FORMAT_SMC
-};
-
-disk_t disks[16];
-int numdisks;
-
-class CFdsemu {
-private:
-	char error[1024];
-	bool success;
-
-protected:
-	void SetError(const char *str);
-	void ClearError();
-
-public:
-	CDevice *dev;
-
-public:
-	CFdsemu(CDevice *d);
-	~CFdsemu();
-
-	bool Init();
-	bool CheckDevice();
-	bool GetError(char *str, int len);
-	bool GetError(wchar_t *wstr, int len);
-	bool ReadDisk(uint8_t **raw, int *rawsize);
-	int ParseDiskData(uint8_t *raw, int rawsize, char **output);
-	int WriteFlash(char *filename, int(*callback)(void*, int, int), void *user);
-};
-
-void CFdsemu::SetError(const char *str)
-{
-	strcat(error, str);
-	success = false;
-}
-
-void CFdsemu::ClearError()
-{
-	memset(error, 0, 1024);
-	success = true;
-}
-
-CFdsemu::CFdsemu(CDevice *d)
-{
-	dev = d;
-	ClearError();
-}
-
-CFdsemu::~CFdsemu()
-{
-	dev->Close();
-}
-
-bool CFdsemu::Init()
-{
-	bool ret = dev->Open();
-
-	if (ret == true) {
-		dev->FlashUtil->ReadHeaders();
-	}
-	SetError("Error opening device.  Is the FDSemu plugged in?\n");
-	return(ret);
-}
-
-bool CFdsemu::CheckDevice()
-{
-	bool ret;
-
-	ret = dev->Reopen();
-	if (ret == false) {
-		SetError("FDSemu not detected, please re-insert the device.\n");
-	}
-	return(ret);
-}
-
-bool CFdsemu::GetError(char *str, int len)
-{
-	strncpy(str, error, len);
-	return(success);
-}
-
-bool CFdsemu::GetError(wchar_t *wstr, int len)
-{
-	mbstowcs(wstr, error, len);
-	return(success);
-}
-
-bool CFdsemu::ReadDisk(uint8_t **raw, int *rawsize)
-{
-	enum { 
-		READBUFSIZE = 0x90000,
-		LEADIN = 26000
-	};
-
-//	FILE *f;
-	uint8_t *readBuf = NULL;
-	int result;
-	int bytesIn = 0;
-
-	*raw = 0;
-	*rawsize = 0;
-	if (CheckDevice() == false) {
-		return(false);
-	}
-	ClearError();
-
-	//if(!(dev_readIO()&MEDIA_SET)) {
-	//    printf("Warning - Disk not inserted?\n");
-	//}
-	if (!dev->DiskReadStart()) {
-		SetError("diskreadstart failed\n");
-		return false;
-	}
-
-	readBuf = (uint8_t*)malloc(READBUFSIZE);
-	do {
-		result = dev->DiskRead(readBuf + bytesIn);
-		bytesIn += result;
-//		if (!(bytesIn % ((DISK_READMAX)* 32)))
-//			printf(".");
-	} while (result == DISK_READMAX && bytesIn<READBUFSIZE - DISK_READMAX);
-
-	if (result<0) {
-		SetError("read error\n");
-		free(readBuf);
-		return false;
-	}
-
-	//eat up the lead-in
-	*raw = (uint8_t*)malloc(bytesIn - (LEADIN / 8));
-	*rawsize = bytesIn - (LEADIN / 8);
-	memcpy(*raw, readBuf + (LEADIN / 8), *rawsize);
-
-	free(readBuf);
-
-	return true;
-}
-
-#include "diskutil.h"
-
-int CFdsemu::ParseDiskData(uint8_t *raw, int rawsize, char **output)
-{
-	uint8_t *binBuf;
-	int binSize, datasize;
-	bool ret = false;
-
-	raw_to_bin(raw, rawsize, &binBuf, &binSize, &datasize);
-	free(binBuf);
-	messages_printf("Total size of disk data: %d bytes\r\n", datasize);
-	*output = messages_get();
-	return(datasize);
-}
-
-//write disk image to flash
-int CFdsemu::WriteFlash(char *filename, int(*callback)(void*, int, int), void *user)
-{
-	enum { FILENAMELENGTH = 240, };   //number of characters including null
-
-	uint8_t *inbuf = 0;
-	uint8_t *outbuf = 0;
-	int filesize;
-	char *shortName;
-	TFlashHeader *headers = dev->FlashUtil->GetHeaders();
-	int pos = 0, side = 0;
-	int slot;
-
-	if (headers == 0) {
-		printf("error reading flash headers");
-		return(false);
-	}
-
-	if (!loadfile(filename, &inbuf, &filesize)) {
-		printf("Can't read %s\n", filename);
-		return false;
-	}
-
-	if (inbuf[0] == 'F') {
-		pos = 16;      //skip fwNES header
-	}
-
-	filesize -= (filesize - pos) % FDSSIZE;  //truncate down to whole disks
-						
-	shortName = get_shortname(filename);
-
-	slot = find_slot(filesize / FDSSIZE);
-
-	if (slot == -1) {
-		printf("Cannot find %d adjacent slots for storing disk image.\nPlease make room on the flash to store this disk image.\n", filesize / FDSSIZE);
-		delete[] inbuf;
-		return(false);
-	}
-
-	printf("Writing disk image to flash slot %d...\n", slot);
-
-	outbuf = new uint8_t[SLOTSIZE];
-
-	while (pos<filesize && inbuf[pos] == 0x01) {
-		printf("Side %d", side + 1);
-		if (fds_to_bin(outbuf + FLASHHEADERSIZE, inbuf + pos, SLOTSIZE - FLASHHEADERSIZE)) {
-			memset(outbuf, 0, FLASHHEADERSIZE);
-			uint32_t chksum = chksum_calc(outbuf + FLASHHEADERSIZE, SLOTSIZE - FLASHHEADERSIZE);
-
-			//write leadin
-			outbuf[244] = DEFAULT_LEAD_IN & 0xff;
-			outbuf[245] = DEFAULT_LEAD_IN / 256;
-			outbuf[250] = 0;
-
-			if (side == 0) {
-				strncpy((char*)outbuf, shortName, 240);
-			}
-			if (dev->Flash->Write(outbuf, (slot + side)*SLOTSIZE, SLOTSIZE) == false) {
-				printf("error.\n");
-				break;
-			}
-			printf("done.\n");
-		}
-		pos += FDSSIZE;
-		side++;
-	}
-	delete[] inbuf;
-	delete[] outbuf;
-	printf("\n");
-	return true;
-
-	return(0);
-}
-
 void CheckMessages()
 {
 	MSG msg;
@@ -331,6 +72,204 @@ void CheckMessages()
 }
 
 CFdsemu *fdsemu;
+
+typedef struct SStringEntry {
+	char *str;
+	struct SStringEntry *next;
+} TStringEntry;
+
+class CStringList {
+protected:
+	TStringEntry *head;
+
+public:
+	CStringList();
+	~CStringList();
+
+	void Add(char *str);
+	char *Get(int index);
+	int Count();
+	void Clear();
+};
+
+CStringList::CStringList()
+{
+	head = 0;
+}
+
+CStringList::~CStringList()
+{
+	Clear();
+}
+
+void CStringList::Add(char *str)
+{
+	TStringEntry *se, *s;
+
+	se = new TStringEntry;
+	se->str = _strdup(str);
+	se->next = 0;
+
+	if (head == 0) {
+		head = se;
+	}
+	else {
+		s = head;
+		while (s->next) {
+			s = s->next;
+		}
+		s->next = se;
+	}
+}
+
+char *CStringList::Get(int index)
+{
+	TStringEntry *s = head;
+	char *ret = 0;
+
+	while (s && index >= 0) {
+		ret = s->str;
+		index--;
+		s = s->next;
+	}
+	return(ret);
+}
+
+int CStringList::Count()
+{
+	TStringEntry *s = head;
+	int n = 0;
+
+	while (s) {
+		s = s->next;
+		n++;
+	}
+	return(n);
+}
+
+void CStringList::Clear()
+{
+	TStringEntry *ps, *s = head;
+
+	while (s) {
+		free(s->str);
+		s->str = 0;
+		ps = s;
+		s = s->next;
+		delete ps;
+	}
+}
+
+#define MAX_FILES	1000
+
+void SelectDiskImages(HWND hWnd, CStringList *sl)
+{
+	OPENFILENAME ofn;       // common dialog box structure
+	char *buf;
+	int len;
+	int bufsize = MAX_FILES * (MAX_PATH + 1) + 1;
+
+	buf = (char*)malloc(bufsize);
+	memset(buf, 0, bufsize);
+
+	ZeroMemory(&ofn, sizeof(ofn));
+	ofn.lStructSize = sizeof(ofn);
+	ofn.hwndOwner = hWnd;
+	ofn.lpstrFile = buf;
+	ofn.nMaxFile = bufsize;
+	ofn.lpstrFilter = "Disk images (*.fds, *.A)\0*.fds;*.A\0All files (*.*)\0*.*\0";
+	ofn.nFilterIndex = 1;
+	ofn.lpstrFileTitle = NULL;
+	ofn.nMaxFileTitle = 0;
+	ofn.lpstrInitialDir = NULL;
+	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_ALLOWMULTISELECT | OFN_EXPLORER;
+
+	sl->Clear();
+	if (GetOpenFileName(&ofn) == TRUE) {
+		char *ptr = buf;
+		int n = strlen(ptr);
+		char tmp[1024];
+		char path[1024];
+
+		//detect if one file was selected
+		if (ptr[n + 1] == NULL) {
+			sl->Add(ptr);
+		}
+
+		//multiple files selected
+		else {
+
+			//save file path
+			strcpy(path, ptr);
+
+			//skip the pathname part of the buffer returned
+			ptr += strlen(ptr) + 1;
+
+			while (*ptr != NULL) {
+				sprintf(tmp, "%s\\%s", path, ptr);
+				sl->Add(tmp);
+				len = strlen(ptr);
+				ptr += len + 1;
+			}
+		}
+
+//		sprintf(tmp, "%d files", sl->Count());
+//		MessageBox(hWnd, tmp, "erererer", MB_OK);
+	}
+
+	free(buf);
+}
+
+void WriteCallback(void *user, int x, int y)
+{
+	/*
+	x = 0, number of sides total, called before anything is written
+	x = 1, current side number writing, calling before that side has started
+	x = 2, write address of current side, called periodically
+	*/
+	HWND hProgress = (HWND)user;
+	static int curside = 0;
+
+	CheckMessages();
+
+	//number of sides total
+	if (x == 0) {
+		SendMessage(hProgress, PBM_SETRANGE, 0, MAKELPARAM(0, (y * 0x10000) / 0x100));
+		SendMessage(hProgress, PBM_SETSTEP, (WPARAM)1, 0);
+		curside = 0;
+	}
+
+	else if (x == 1) {
+		curside = y;
+	}
+
+	else if (x == 2) {
+		SendMessage(hProgress, PBM_SETPOS, (WPARAM)((y + (curside * 0x10000)) / 0x100), 0);
+	}
+
+}
+
+void WriteDiskImages(HWND hWnd, CStringList *sl)
+{
+	int i;
+	HWND hDlg;
+	HWND hList, hProgress, hProgress2;
+
+	BOOL b = EnableWindow(hWnd, FALSE);
+	hDlg = CreateDialogParam(hInst, MAKEINTRESOURCE(IDD_WRITEDIALOG), hWnd, reinterpret_cast<DLGPROC>(WriteImagesDlg), (LPARAM)sl);
+	hList = GetDlgItem(hDlg, IDC_WRITELIST);
+	hProgress = GetDlgItem(hDlg, IDC_PROGRESS);
+	ShowWindow(hDlg, SW_SHOW);
+	for (i = 0; i < sl->Count(); i++) {
+		SendMessage(hList, LB_ADDSTRING, 0, (WPARAM)sl->Get(i));
+		CheckMessages();
+		fdsemu->WriteFlash(sl->Get(i), WriteCallback, (HWND)hProgress);
+		fdsemu->dev->FlashUtil->ReadHeaders();
+	}
+	DestroyWindow(hDlg);
+	EnableWindow(hWnd, TRUE);
+	SetActiveWindow(hWnd);
+}
 
 void InsertListViewColumns(HWND hList)
 {
@@ -354,7 +293,7 @@ BOOL InsertListViewItem(HWND hList, char *name, int id)
 	lvi.pszText = name;
 	lvi.lParam = id;
 	if (ListView_InsertItem(hList, &lvi) == -1) {
-			return FALSE;
+		return FALSE;
 	}
 
 	return TRUE;
@@ -367,44 +306,95 @@ int CALLBACK CompareFunc(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort)
 	return(_stricmp((char*)headers[lParam1].filename, (char*)headers[lParam2].filename));
 }
 
-int GenerateList(HWND hList)
+int GenerateList(HWND hList,HWND hStatus)
 {
-	TFlashHeader *headers = fdsemu->dev->FlashUtil->GetHeaders();
+	TFlashHeader *headers;
 	uint32_t i;
 	int side = 0, empty = 0;
+	char str[128];
 
 	ListView_DeleteAllItems(hList);
+	EnableWindow(hList, FALSE);
+	SetWindowText(hStatus, "Reading disk headers...");
+	CheckMessages();
+
+	fdsemu->dev->FlashUtil->ReadHeaders();
+	headers = fdsemu->dev->FlashUtil->GetHeaders();
 	if (headers == 0) {
 		return(-1);
 	}
 
-	printf("Listing disks stored in flash:\n");
-
 	for (i = 0; i < fdsemu->dev->Slots; i++) {
+		TFlashHeader *header = &headers[i];
 		uint8_t *buf = headers[i].filename;
 
-		if (buf[0] == 0xFF) {          //empty
+		//empty slot
+		if (buf[0] == 0xFF) {
 			empty++;
+			continue;
 		}
 
-		//filename is here
-		else if (buf[0] != 0) {
-			InsertListViewItem(hList, (char*)buf, i);
+		//this slot has valid ownerid/nextid
+		if (header->flags & 0x20) {
+
+			//first disk image of a set
+			if (header->ownerid == i) {
+				InsertListViewItem(hList, (char*)buf, i);
+			}
+		}
+
+		else {
+			//filename is here
+			if (buf[0] != 0) {
+				InsertListViewItem(hList, (char*)buf, i);
+			}
 		}
 	}
+
 	ListView_SortItems(hList, CompareFunc, 0);
+	EnableWindow(hList, TRUE);
+
+	//update teh status bar
+	if (empty >= 0) {
+		sprintf(str, "%d slots used, %d remaining.", fdsemu->dev->Slots - empty, empty);
+	}
+	else {
+		sprintf(str, "Error reading flash headers.");
+	}
+	SetWindowText(hStatus, str);
+
+
 	return(empty);
 }
 
+void DragFunc(HWND hWnd, HDROP hDrop)
+{
+	int i, numfiles;
+	char filename[1024];
+	CStringList *sl = new CStringList();
+
+	numfiles = DragQueryFile(hDrop, 0xFFFFFFFF, (LPSTR)NULL, 0);
+	for (i = 0; i < numfiles; i++) {
+		DragQueryFile(hDrop, i, filename, sizeof(filename));
+		sl->Add(filename);
+	}
+
+	WriteDiskImages(hWnd, sl);
+	delete sl;
+
+	//display new list of disks stored in flash
+	i = GenerateList(GetDlgItem(hWnd, ID_DISKLIST), GetDlgItem(hWnd, ID_STATUS));
+}
+
 int APIENTRY WinMain(HINSTANCE hInstance,
-                     HINSTANCE hPrevInstance,
-                     LPSTR    lpCmdLine,
-                     int       nCmdShow)
+	HINSTANCE hPrevInstance,
+	LPSTR    lpCmdLine,
+	int       nCmdShow)
 {
 	char str[1024];
 
-    UNREFERENCED_PARAMETER(hPrevInstance);
-    UNREFERENCED_PARAMETER(lpCmdLine);
+	UNREFERENCED_PARAMETER(hPrevInstance);
+	UNREFERENCED_PARAMETER(lpCmdLine);
 
 	fdsemu = new CFdsemu(&dev);
 	if (fdsemu->Init() == false) {
@@ -413,40 +403,36 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 		return(0);
 	}
 
-	// TODO: Place code here.
-/*	if (dev.Open() == false) {
-		MessageBox(0, L"Error detecting FDSemu", L"Error", MB_OK);
-		return(2);
-	}*/
+	// Initialize global strings
+	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
+	LoadString(hInstance, IDC_FDSEMUDISKRW, szWindowClass, MAX_LOADSTRING);
+	MyRegisterClass(hInstance);
 
-    // Initialize global strings
-    LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
-    LoadString(hInstance, IDC_FDSEMUDISKRW, szWindowClass, MAX_LOADSTRING);
-    MyRegisterClass(hInstance);
-
-    // Perform application initialization:
-    if (!InitInstance (hInstance, nCmdShow))
-    {
+	// Perform application initialization:
+	if (!InitInstance(hInstance, nCmdShow)) {
 		fdsemu->dev->Close();
 		return FALSE;
-    }
+	}
 
-    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_FDSEMUDISKRW));
+	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_FDSEMUDISKRW));
 
 	MSG msg;
 
-    // Main message loop:
-    while (GetMessage(&msg, NULL, 0, 0))
-    {
-        if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
-        {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
-    }
+	// Main message loop:
+	while (GetMessage(&msg, NULL, 0, 0))
+	{
+		if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
 
 	fdsemu->dev->Close();
-	return (int) msg.wParam;
+
+	delete fdsemu;
+
+	return (int)msg.wParam;
 }
 
 //
@@ -456,23 +442,23 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 //
 ATOM MyRegisterClass(HINSTANCE hInstance)
 {
-    WNDCLASSEX wcex;
+	WNDCLASSEX wcex;
 
-    wcex.cbSize = sizeof(WNDCLASSEX);
+	wcex.cbSize = sizeof(WNDCLASSEX);
 
-    wcex.style          = CS_HREDRAW | CS_VREDRAW;
-    wcex.lpfnWndProc    = WndProc;
-    wcex.cbClsExtra     = 0;
-    wcex.cbWndExtra     = 0;
-    wcex.hInstance      = hInstance;
-    wcex.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
-    wcex.hCursor        = LoadCursor(NULL, IDC_ARROW);
-    wcex.hbrBackground  = (HBRUSH)(COLOR_WINDOW+0);
-    wcex.lpszMenuName   = MAKEINTRESOURCE(IDC_FDSEMUDISKRW);
-    wcex.lpszClassName  = szWindowClass;
-    wcex.hIconSm        = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_ICON1));
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = WndProc;
+	wcex.cbClsExtra = 0;
+	wcex.cbWndExtra = 0;
+	wcex.hInstance = hInstance;
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 0);
+	wcex.lpszMenuName = MAKEINTRESOURCE(IDC_FDSEMUDISKRW);
+	wcex.lpszClassName = szWindowClass;
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_ICON1));
 
-    return RegisterClassEx(&wcex);
+	return RegisterClassEx(&wcex);
 }
 
 //
@@ -497,16 +483,16 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		return FALSE;
 
 	HWND hWnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-      CW_USEDEFAULT, 0, 500, 600, NULL, NULL, hInstance, NULL);
+		CW_USEDEFAULT, 0, 500, 600, NULL, NULL, hInstance, NULL);
 
-   if (!hWnd) {
-      return FALSE;
-   }
+	if (!hWnd) {
+		return FALSE;
+	}
 
-   ShowWindow(hWnd, nCmdShow);
-   UpdateWindow(hWnd);
+	ShowWindow(hWnd, nCmdShow);
+	UpdateWindow(hWnd);
 
-   return TRUE;
+	return TRUE;
 }
 
 //
@@ -528,92 +514,81 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	int i;
 	static char str[512];
 	LVITEM lvi;
+	CStringList *sl;
 
 	switch (message)
-    {
-    case WM_COMMAND:
-        {
-            int wmId = LOWORD(wParam);
-            // Parse the menu selections:
-            switch (wmId)
-            {
-			case IDM_ABOUT:
-				DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-                break;
-			case IDM_EXIT:
-				DestroyWindow(hWnd);
-                break;
-			case ID_DISK_READDISK:
-				//reset all disk reading information data
-				memset(disks, 0, sizeof(disk_t) * 16);
-				numdisks = 0;
+	{
+	case WM_COMMAND:
+	{
+		int wmId = LOWORD(wParam);
+		// Parse the menu selections:
+		switch (wmId)
+		{
+		case IDM_ABOUT:
+			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+			break;
+		case IDM_EXIT:
+			DestroyWindow(hWnd);
+			break;
+		case ID_DISK_READDISK:
+			DialogBox(hInst, MAKEINTRESOURCE(IDD_READDISK), hWnd, reinterpret_cast<DLGPROC>(ReadDiskDlg));
+			break;
 
-				DialogBox(hInst, MAKEINTRESOURCE(IDD_READDISK), hWnd, reinterpret_cast<DLGPROC>(ReadDiskDlg));
+		case ID_DISK_WRITEDISK:
+			DialogBox(hInst, MAKEINTRESOURCE(IDD_WRITEDISK), hWnd, reinterpret_cast<DLGPROC>(WriteDiskDlg));
+			break;
 
-				for (i = 0; i < 16; i++) {
-					if (disks[i].raw) {
-						free(disks[i].raw);
-					}
-					disks[i].raw = 0;
-					disks[i].rawsize = 0;
-				}
-				numdisks = 0;
-				break;
+		case ID_FLASH_WRITEIMAGES:
+			sl = new CStringList();
+			SelectDiskImages(hWnd,sl);
+			WriteDiskImages(hWnd, sl);
+			delete sl;
+			GenerateList(GetDlgItem(hWnd, ID_DISKLIST),GetDlgItem(hWnd, ID_STATUS));
+			break;
 
-			case ID_DISK_WRITEDISK:
-				break;
+		case ID_POPUP_DELETE:
+			hStatus = GetDlgItem(hWnd, ID_STATUS);
+			hList = GetDlgItem(hWnd, ID_DISKLIST);
 
-			case ID_POPUP_DELETE:
-				hStatus = GetDlgItem(hWnd, ID_STATUS);
-				hList = GetDlgItem(hWnd, ID_DISKLIST);
+			//find selected items
+			i = ListView_GetNextItem(hList, -1, LVNI_SELECTED);
+			while (i != -1) {
+				lvi.iItem = i;
+				lvi.iSubItem = 0;
+				lvi.mask = LVIF_PARAM;
+				if (ListView_GetItem(hList, &lvi) == TRUE) {
 
-				//find selected items
-				i = ListView_GetNextItem(hList, -1, LVNI_SELECTED);
-				while (i != -1) {
-					lvi.iItem = i;
-					lvi.iSubItem = 0;
-					lvi.mask = LVIF_PARAM;
-					if (ListView_GetItem(hList, &lvi) == TRUE) {
+					//update status bar
+					sprintf(str, "Deleting disk image in slot %d from flash...", lvi.lParam);
+					SetWindowText(hStatus, str);
 
-						//update status bar
-						sprintf(str, "Deleting disk image in slot %d from flash...", lvi.lParam);
-						SetWindowText(hStatus, str);
-
-						fdsemu->dev->Flash->EraseSlot(lvi.lParam);
-					}
-
-					//check if more are selected
-					i = ListView_GetNextItem(hList, i, LVNI_SELECTED);
+					fdsemu->Erase(lvi.lParam);
 				}
 
-				//re-read the headers
-				fdsemu->dev->FlashUtil->ReadHeaders();
+				//check if more are selected
+				i = ListView_GetNextItem(hList, i, LVNI_SELECTED);
+			}
 
-				//display new list of disks stored in flash
-				i = GenerateList(hList);
+			//re-read the headers
+			fdsemu->dev->FlashUtil->ReadHeaders();
 
-				//update teh status bar
-				if (i >= 0) {
-					sprintf(str, "%d slots used, %d remaining.", fdsemu->dev->Slots - i, i);
-				}
-				else {
-					sprintf(str, "Error reading flash headers.");
-				}
-				SetWindowText(hStatus, str);
-				break;
-			default:
-                return DefWindowProc(hWnd, message, wParam, lParam);
-            }
-        }
-        break;
-    case WM_PAINT:
-        {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hWnd, &ps);
-            // TODO: Add any drawing code that uses hdc here...
-            EndPaint(hWnd, &ps);
-        }
-        break;
+			//display new list of disks stored in flash
+			i = GenerateList(hList, hStatus);
+
+			break;
+		default:
+			return DefWindowProc(hWnd, message, wParam, lParam);
+		}
+	}
+	break;
+	case WM_PAINT:
+	{
+		PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(hWnd, &ps);
+		// TODO: Add any drawing code that uses hdc here...
+		EndPaint(hWnd, &ps);
+	}
+	break;
 	case WM_CREATE:
 		hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 
@@ -629,7 +604,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			hWnd, (HMENU)ID_DISKLIST, GetModuleHandle(NULL), NULL);
 
 		InsertListViewColumns(hList);
-		i = GenerateList(hList);
+		i = GenerateList(hList,hStatus);
 		if (i >= 0) {
 			sprintf(str, "%d slots used, %d remaining.", fdsemu->dev->Slots - i, i);
 		}
@@ -637,17 +612,24 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			sprintf(str, "Error reading flash headers.");
 		}
 		SetWindowText(hStatus, str);
-
+		DragAcceptFiles(hWnd, TRUE);
 		break;
+
 	case WM_DESTROY:
-        PostQuitMessage(0);
-        break;
+		DragAcceptFiles(hWnd, FALSE);
+		PostQuitMessage(0);
+		break;
+
+	case WM_DROPFILES:
+		DragFunc(hWnd, (HDROP)wParam); /* application-defined function */
+		break;
+
 	case WM_NOTIFY:
 		hList = GetDlgItem(hWnd, ID_DISKLIST);
 
 		// When right button clicked on mouse
 		if ((((LPNMHDR)lParam)->hwndFrom) == hList) {
-			if(ListView_GetSelectedCount(hList) > 0) {
+			if (ListView_GetSelectedCount(hList) > 0) {
 				switch (((LPNMHDR)lParam)->code) {
 				case NM_RCLICK:
 					POINT cursor;
@@ -694,285 +676,42 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	default:
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
-    return 0;
+	return 0;
 }
 
 // Message handler for about box.
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    UNREFERENCED_PARAMETER(lParam);
-    switch (message)
-    {
-    case WM_INITDIALOG:
-        return (INT_PTR)TRUE;
-
-    case WM_COMMAND:
-        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
-        {
-            EndDialog(hDlg, LOWORD(wParam));
-            return (INT_PTR)TRUE;
-        }
-        break;
-    }
-    return (INT_PTR)FALSE;
-}
-
-void OutputInformation(HWND hDlg, int side)
-{
-	int i;
-	HWND hRadioFDS, hEdit, hStatic;
-	char *output = 0;
-
-	disks[side].datasize = fdsemu->ParseDiskData(disks[side].raw, disks[side].rawsize, &output);
-
-	hRadioFDS = GetDlgItem(hDlg, IDC_RADIO_FDS);
-	hEdit = GetDlgItem(hDlg, IDC_READEDIT);
-
-	for (i = 0; i < numdisks; i++) {
-		if (disks[i].datasize > 65500) {
-			EnableWindow(hRadioFDS, FALSE);
-			CheckRadioButton(hDlg, IDC_RADIO_FDS, IDC_RADIO_GD, IDC_RADIO_GD);
-		}
-	}
-
-	if (output && strlen(output)) {
-		char str[512];
-		int len = strlen(output);
-
-		SetWindowText(hEdit, output);
-
-		memset(str, 0, 512);
-		wsprintf(str, "Side %d\r\n\r\nData size: %d bytes\r\nFormat: %s", 
-			side + 1, disks[side].datasize, disks[side].datasize > 65500 ? "Game Doctor" : "fwNES");
-		hStatic = GetDlgItem(hDlg, IDC_READINFO);
-		SetWindowText(hStatic, str);
-	}
-}
-
-void SaveDiskImage_FDS(char *fn)
-{
-	FILE *fp;
-	uint8_t *raw03, *out;
-	int i, rawsize, outsize;
-
-	//try to open file
-	if ((fp = fopen(fn, "wb")) == 0) {
-		MessageBox(0, "Error opening output file.", "Error", MB_OK);
-		return;
-	}
-
-	out = (uint8_t*)malloc(1024 * 1024);
-
-	//convert each disk side
-	for (i = 0; i < numdisks; i++) {
-
-		memset(out, 0, 1024 * 1024);
-
-		//save raw data size
-		rawsize = disks[i].rawsize;
-
-		//convert raw to raw03
-		raw03 = (uint8_t*)malloc(rawsize);
-		memcpy(raw03, disks[i].raw, rawsize);
-		raw_to_raw03(raw03, rawsize);
-
-		outsize = 65500;
-		raw03_to_fds(raw03, out, rawsize);
-		free(raw03);
-
-		fwrite(out, 1, outsize, fp);
-	}
-
-	free(out);
-
-	//close file
-	fclose(fp);
-}
-
-void SaveDiskImage_GD(char *filename)
-{
-	char fn[1024];
-	FILE *fp;
-	uint8_t *raw03, *out;
-	int i, rawsize, outsize;
-
-	//convert to this char* array
-	memset(fn, 0, 1024);
-	strncpy(fn, filename, 1024);
-
-	out = (uint8_t*)malloc(1024 * 1024);
-
-	//convert each disk side
-	for (i = 0; i < numdisks; i++) {
-
-		memset(out, 0, 1024 * 1024);
-
-		//save raw data size
-		rawsize = disks[i].rawsize;
-
-		//convert raw to raw03
-		raw03 = (uint8_t*)malloc(rawsize);
-		memcpy(raw03, disks[i].raw, rawsize);
-		raw_to_raw03(raw03, rawsize);
-
-		outsize = raw03_to_gd(raw03, out, rawsize);
-		free(raw03);
-
-		//try to open file
-		if ((fp = fopen(fn, "wb")) == 0) {
-			MessageBox(0, "Error opening output file.", "Error", MB_OK);
-			return;
-		}
-
-		fwrite(out, 1, outsize, fp);
-
-		//close file
-		fclose(fp);
-
-		//increment file extension
-		fn[strlen(fn) - 1]++;
-	}
-
-}
-
-INT_PTR CALLBACK ReadDiskDlg(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
-{
-	HWND hEdit, hList, hButton, hStatic;
-	uint8_t *raw;
-	int rawsize, pos;
-	char str[512];
-	char *output = 0;
-	int lbItem, i;
-
 	UNREFERENCED_PARAMETER(lParam);
 	switch (message)
 	{
 	case WM_INITDIALOG:
-		hButton = GetDlgItem(hDlg, IDC_REREADBUTTON);
-		EnableWindow(hButton, FALSE);
-		hStatic = GetDlgItem(hDlg, IDC_READINFO);
-		SetWindowText(hStatic, "");
-		CheckRadioButton(hDlg, IDC_RADIO_FDS, IDC_RADIO_GD, IDC_RADIO_FDS);
 		return (INT_PTR)TRUE;
 
 	case WM_COMMAND:
-		switch (LOWORD(wParam)) {
-		case IDC_SIDELIST:
-			switch (HIWORD(wParam)) {
-			case LBN_SELCHANGE:
-				hButton = GetDlgItem(hDlg, IDC_REREADBUTTON);
-				EnableWindow(hButton, TRUE);
-				hList = GetDlgItem(hDlg, IDC_SIDELIST);
-
-				// Get selected index.
-				lbItem = (int)SendMessage(hList, LB_GETCURSEL, 0, 0);
-
-				// Get item data.
-				i = (int)SendMessage(hList, LB_GETITEMDATA, lbItem, 0);
-
-				if (i >= numdisks)
-					return TRUE;
-
-				OutputInformation(hDlg, i);
-
-				return TRUE;
-			}
+		if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+		{
+			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
 
-		case IDC_READBUTTON:
-			hEdit = GetDlgItem(hDlg, IDC_READEDIT);
+INT_PTR CALLBACK WriteImagesDlg(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	static int slot;
 
-			sprintf(str, "Reading disk side %d...", numdisks + 1);
-			SetWindowText(hEdit, str);
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		slot = lParam;
+		return (INT_PTR)TRUE;
 
-			CheckMessages();
-
-			if (fdsemu->ReadDisk(&raw, &rawsize) == false) {
-				fdsemu->GetError(str, 512);
-				MessageBox(0, str, "Error", MB_OK);
-			}
-			else {
-				disks[numdisks].raw = raw;
-				disks[numdisks].rawsize = rawsize;
-
-				hList = GetDlgItem(hDlg, IDC_SIDELIST);
-				sprintf(str, "Side %d", numdisks + 1);
-				pos = (int)SendMessage(hList, LB_ADDSTRING, 0, (LPARAM)str);
-				SendMessage(hList, LB_SETITEMDATA, pos, (LPARAM)numdisks);
-				SendMessage(hList, LB_SETSEL, (WPARAM)(BOOL)TRUE, (LPARAM)pos);
-
-				numdisks++;
-
-				//this will fill in the datasize member
-				OutputInformation(hDlg, numdisks - 1);
-
-			}
-
-			return (INT_PTR)TRUE;
-		case IDC_REREADBUTTON:
-			hList = GetDlgItem(hDlg, IDC_SIDELIST);
-			hEdit = GetDlgItem(hDlg, IDC_READEDIT);
-
-			// Get selected index.
-			lbItem = (int)SendMessage(hList, LB_GETCURSEL, 0, 0);
-
-			// Get item data.
-			i = (int)SendMessage(hList, LB_GETITEMDATA, lbItem, 0);
-
-			sprintf(str, "Re-reading disk side %d...", i + 1);
-			SetWindowText(hEdit, str);
-
-			CheckMessages();
-
-			if (fdsemu->ReadDisk(&raw, &rawsize) == false) {
-				fdsemu->GetError(str, 512);
-				MessageBox(0, str, "Error", MB_OK);
-			}
-			else {
-				sprintf(str, "Read %d bytes", rawsize);
-				SetWindowText(hEdit, str);
-
-				free(disks[i].raw);
-				disks[i].raw = raw;
-				disks[i].rawsize = rawsize;
-
-				OutputInformation(hDlg, i);
-			}
-
-			return (INT_PTR)TRUE;
-		case IDC_SAVEBUTTON:
-			OPENFILENAME ofn;
-			wchar_t filename[1024];
-
-			ZeroMemory(&ofn, sizeof(ofn));
-			ZeroMemory(&filename, sizeof(wchar_t) * 1024);
-
-			ofn.lStructSize = sizeof(ofn);
-			ofn.hwndOwner = hDlg;
-			if (IsDlgButtonChecked(hDlg,IDC_RADIO_FDS) == BST_CHECKED) {
-				ofn.lpstrFilter = (LPCSTR)"fwNES Image (*.fds)\0*.fds\0";
-				i = 0;
-			}
-			else {
-				ofn.lpstrFilter = (LPCSTR)"Game Doctor Image (*.A)\0*.A\0";
-				i = 1;
-			}
-			ofn.lpstrFile = (LPSTR)filename;
-			ofn.nMaxFile = 1024;
-			ofn.Flags = OFN_EXPLORER | OFN_OVERWRITEPROMPT;
-
-			GetSaveFileName(&ofn);
-
-			if (i == 0) {
-				SaveDiskImage_FDS(ofn.lpstrFile);
-			}
-			else {
-				SaveDiskImage_GD(ofn.lpstrFile);
-			}
-
-			return (INT_PTR)TRUE;
-		case IDOK:
-		case IDCANCEL:
+	case WM_COMMAND:
+		if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+		{
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
 		}
