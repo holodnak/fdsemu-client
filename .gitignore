@@ -13,9 +13,11 @@
 *.D
 *.gd
 
+*.res
 *.sdf
 *.opendb
 *.user
+*.aps
 
 cli/vs2015/Debug
 cli/vs2015/Release
