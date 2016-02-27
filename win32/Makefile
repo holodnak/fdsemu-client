@@ -12,7 +12,7 @@ TARGET = fdsemu-win32.exe
 CPPSOURCE = fdsemu-diskrw.cpp Disk.cpp DiskSide.cpp Fdsemu.cpp
 CPPSOURCE += readdiskdlg.cpp writediskdlg.cpp
 CPPSOURCE += ../cli/diskrw.cpp ../cli/flashrw.cpp ../cli/diskutil.cpp ../cli/fwupdate.cpp 
-CPPSOURCE += ../lib/firmware.cpp ../lib/bootloader.cpp ../lib/crc32.cpp
+CPPSOURCE += ../lib/firmware.cpp ../lib/bootloader.cpp ../lib/savedisk.cpp ../lib/crc32.cpp
 CPPSOURCE += ../lib/fdsemu/Device.cpp ../lib/fdsemu/Flash.cpp ../lib/fdsemu/FlashUtil.cpp ../lib/fdsemu/Sram.cpp ../lib/fdsemu/System.cpp
 
 CSOURCE = ../lib/lz4/lz4.c ../lib/lz4/lz4frame.c ../lib/lz4/lz4hc.c ../lib/lz4/xxhash.c

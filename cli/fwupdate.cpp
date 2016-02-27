@@ -145,6 +145,7 @@ bool upload_bootloader(uint8_t *firmware, int filesize)
 	uint8_t *buf;
 	uint32_t *buf32;
 	uint32_t oldcrc, crc;
+	bool ret;
 
 	if (filesize > 0x1000) {
 		printf("bootloader too large\n");
@@ -183,8 +184,12 @@ bool upload_bootloader(uint8_t *firmware, int filesize)
 
 	dev.UpdateBootloader();
 
+	sleep_ms(1000);
+
+	ret = dev.Reopen();
+
 	printf("Updated bootloader, old crc = %08X, new crc = %08X\n", oldcrc, crc);
-	return(true);
+	return(ret);
 }
 
 bool firmware_update(char *filename, int useflash)

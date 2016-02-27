@@ -382,7 +382,7 @@ int raw03_to_gd(uint8_t *raw, uint8_t *fds, int rawsize) {
 	//lead-in can vary a lot depending on drive, scan for first block to get our bearings
 	in = findFirstBlock(raw) - MIN_GAP_SIZE;
 	if (in<0)
-		return false;
+		return -1;
 
 	out = 3;
 

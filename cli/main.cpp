@@ -245,6 +245,26 @@ bool bootloader_is_valid(uint8_t *fw, int len)
 	return(buf == 0 ? false : true);
 }
 
+int GetDiskSide(int ownerid, int childid)
+{
+	TFlashHeader *headers = dev.FlashUtil->GetHeaders();
+	TFlashHeader *header;
+	uint32_t i;
+	int ret = 1;
+	int slot = ownerid;
+
+	while (slot != 0xFFFF) {
+		header = &headers[slot];
+		ret++;
+		slot = header->nextid;
+		if (slot == childid) {
+			break;
+		}
+	}
+
+	return(ret);
+}
+
 bool fds_list(int verbose)
 {
 	TFlashHeader *headers = dev.FlashUtil->GetHeaders();
@@ -275,13 +295,17 @@ bool fds_list(int verbose)
 
 			//this disk image has valid ownerid/nextid
 			if (header->flags & 0x20) {
-				side = 0;
 				if (header->ownerid == i) {
 					printf("%d: %s\n", i, buf);
 				}
-				else {
-					printf("%d: child of slot %d\n", i, header->ownerid);
+				else if ((header->flags & 3) == 3) {
+					printf("%d:    Game Doctor save disk for slot %d\n", i, header->ownerid);
 				}
+				else {
+					side = GetDiskSide(header->ownerid,i);
+					printf("%d:    Child of slot %d (Side %c)\n", i, header->ownerid,'A' + (side - 1));
+				}
+				side = 1;
 			}
 
 			//old format flash image
@@ -346,7 +370,7 @@ bool chip_erase()
 		return false;
 	if (!dev.FlashWrite(cmd, 1, 1, 0))
 		return false;
-	return(dev.Flash->WaitBusy(200 * 1000));
+	return(dev.Flash->WaitBusy(600 * 1000));
 }
 
 bool verify_device()

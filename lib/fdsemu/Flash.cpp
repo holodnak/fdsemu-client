@@ -219,7 +219,13 @@ bool CFlash::EraseSlot(int slot)
 
 bool CFlash::ChipErase()
 {
-	return(false);
+	uint8_t cmd[] = { CMD_CHIPERASE,0,0,0 };
+
+	if (!dev->Flash->WriteEnable())
+		return false;
+	if (!dev->FlashWrite(cmd, 1, 1, 0))
+		return false;
+	return(dev->Flash->WaitBusy(600 * 1000));
 }
 
 bool CFlash::Reset()

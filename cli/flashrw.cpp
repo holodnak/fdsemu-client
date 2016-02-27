@@ -305,8 +305,8 @@ bool write_flash(char *filename, int slot)
 		if (fds_to_bin(outbuf + FLASHHEADERSIZE, inbuf + pos, SLOTSIZE - FLASHHEADERSIZE)) {
 			memset(outbuf, 0, FLASHHEADERSIZE);
 			uint32_t chksum = chksum_calc(outbuf + FLASHHEADERSIZE, SLOTSIZE - FLASHHEADERSIZE);
-			outbuf[244] = DEFAULT_LEAD_IN & 0xff;
-			outbuf[245] = DEFAULT_LEAD_IN / 256;
+//			outbuf[244] = DEFAULT_LEAD_IN & 0xff;
+//			outbuf[245] = DEFAULT_LEAD_IN / 256;
 			outbuf[250] = 0;
 
 			if (side == 0) {
@@ -627,6 +627,7 @@ bool write_doctor(char *file)
 
 		//flags
 		ptr[248] = 0xC1;		//compressed, read only, game doctor format
+
 		memcpy(ptr + 256, cbuf, clen);
 		delete[] cbuf;
 		cbuf = 0;
@@ -683,7 +684,7 @@ bool is_gamedoctor(char *filename)
 	if (file_exists(filename) == true) {
 
 		//check file extension
-		if (filename[strlen(filename) - 1] == 'A' || filename[strlen(filename) - 1] == 'a') {
+		if (filename[strlen(filename) - 1] == 'A' || filename[strlen(filename) - 1] == 'a' || filename[strlen(filename) - 1] == 'S') {
 
 			//load the file
 			if (loadfile(filename, &buf, &len) == true) {

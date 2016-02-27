@@ -99,6 +99,15 @@
     <ClCompile Include="Fdsemu.cpp">
       <Filter>Source Files\fdsemu</Filter>
     </ClCompile>
+    <ClCompile Include="..\lib\bootloader.cpp">
+      <Filter>lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lib\firmware.cpp">
+      <Filter>lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\lib\savedisk.cpp">
+      <Filter>lib</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\lib\lz4\lz4.h">

@@ -15,6 +15,7 @@
 
 *.sdf
 *.opendb
+*.user
 
 cli/vs2015/Debug
 cli/vs2015/Release
@@ -30,4 +31,7 @@ qt/Makefile*
 qt/object_script*
 
 fw
+tool
 
+win32/Debug
+win32/Release

@@ -7,6 +7,7 @@
 
 //mingw needs this
 #define _WIN32_IE 0x0300
+
 #include <windows.h>
 #include <commctrl.h>
 #include <stdio.h>
@@ -14,9 +15,11 @@
 #include "fdsemu-diskrw.h"
 #include "Device.h"
 #include "flashrw.h"
+#include "fwupdate.h"
 #include "diskutil.h"
 #include "Disk.h"
 #include "Fdsemu.h"
+#include "crc32.h"
 
 #define MAX_LOADSTRING 100
 
@@ -29,7 +32,6 @@ HINSTANCE hInst;                                // current instance
 CHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 CHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
 
-															  // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -37,6 +39,7 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    ReadDiskDlg(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    WriteDiskDlg(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    WriteImagesDlg(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK    DiskInfoDlg(HWND, UINT, WPARAM, LPARAM);
 
 CDevice dev;
 
@@ -259,8 +262,14 @@ void WriteDiskImages(HWND hWnd, CStringList *sl)
 	hDlg = CreateDialogParam(hInst, MAKEINTRESOURCE(IDD_WRITEDIALOG), hWnd, reinterpret_cast<DLGPROC>(WriteImagesDlg), (LPARAM)sl);
 	hList = GetDlgItem(hDlg, IDC_WRITELIST);
 	hProgress = GetDlgItem(hDlg, IDC_PROGRESS);
+	hProgress2 = GetDlgItem(hDlg, IDC_PROGRESS2);
+
+	SendMessage(hProgress2, PBM_SETRANGE, 0, MAKELPARAM(0, sl->Count()));
+	SendMessage(hProgress2, PBM_SETSTEP, (WPARAM)1, 0);
+
 	ShowWindow(hDlg, SW_SHOW);
 	for (i = 0; i < sl->Count(); i++) {
+		SendMessage(hProgress2, PBM_SETPOS, (WPARAM)(i), 0);
 		SendMessage(hList, LB_ADDSTRING, 0, (WPARAM)sl->Get(i));
 		CheckMessages();
 		fdsemu->WriteFlash(sl->Get(i), WriteCallback, (HWND)hProgress);
@@ -386,12 +395,180 @@ void DragFunc(HWND hWnd, HDROP hDrop)
 	i = GenerateList(GetDlgItem(hWnd, ID_DISKLIST), GetDlgItem(hWnd, ID_STATUS));
 }
 
+void SaveDiskImage(HWND hWnd,int slot)
+{
+	TFlashHeader *headers = fdsemu->dev->FlashUtil->GetHeaders();
+	TFlashHeader *header;
+	uint8_t *buf, flags;
+	int bufsize, i;
+	int slots[16 + 1], numslots;
+	OPENFILENAME ofn;
+	char filename[1024];
+
+	//get first disk sides header pointer
+	header = &headers[slot];
+
+	//save away the disk image type
+	flags = header->flags;
+
+	//reset the slot informations
+	memset(slots, 0, sizeof(int) * (16 + 1));
+	numslots = 0;
+
+	//if slot has valid ownerid/nextid
+	if (header->flags & 0x20) {
+
+		//keep looping until the end of the chain
+		while (slot != 0xFFFF) {
+			header = &headers[slot];
+			slots[numslots++] = slot;
+			slot = header->nextid;
+		}
+	}
+
+	//old style slot
+	else {
+		slots[numslots++] = slot;
+		for (uint32_t i = (slot + 1); i < fdsemu->dev->Slots; i++) {
+			buf = headers[i].filename;
+
+			//empty slot
+			if (buf[0] == 0xFF) {
+				break;
+			}
+
+			//contains a filename
+			else if (buf[0] != 0) {
+				break;
+			}
+
+			//next disk side
+			else {
+				slots[numslots++] = i;
+			}
+		}
+	}
+
+	//get original header pointer again
+	header = &headers[slots[0]];
+
+/////////////////////////////////////////////////////////////////////////////
+
+	ZeroMemory(&ofn, sizeof(ofn));
+	ZeroMemory(&filename, sizeof(char) * 1024);
+
+	strcpy(filename, (char*)header->filename);
+	ofn.lStructSize = sizeof(ofn);
+	ofn.hwndOwner = hWnd;
+	if ((flags & 3) == 0 && (flags & 0x80) == 0) {
+		ofn.lpstrFilter = (LPCSTR)"fwNES Image (*.fds)\0*.fds\0";
+	}
+	else {
+		ofn.lpstrFilter = (LPCSTR)"Game Doctor Image (*.A)\0*.A\0";
+	}
+	ofn.lpstrFile = (LPSTR)filename;
+	ofn.nMaxFile = 1024;
+	ofn.Flags = OFN_EXPLORER | OFN_OVERWRITEPROMPT;
+
+	//get filename to save disk as
+	if (GetSaveFileName(&ofn) == 0) {
+		return;
+	}
+
+/////////////////////////////////////////////////////////////////////////////
+
+	//standard fds image
+	if ((flags & 3) == 0 && (flags & 0x80) == 0) {
+		uint8_t header[16] = { 0x46, 0x44, 0x53, 0x1A, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+		uint8_t *raw, *fds;
+		FILE *fp;
+
+		//try to open/create the file
+		if ((fp = fopen(filename, "wb")) == 0) {
+			MessageBox(hWnd, "Error opening/creating file to save disk image.", "Error", MB_OK);
+			return;
+		}
+
+		//output header
+		header[4] = numslots;
+		fwrite(header, 16, 1, fp);
+
+		raw = (uint8_t*)malloc(1024 * 1024);
+		fds = (uint8_t*)malloc(0x10000);
+
+		//loop thru all used slots by this disk and save each one
+		for (i = 0; i < numslots; i++) {
+			fdsemu->ReadFlash(slots[i], &buf, &bufsize);
+			bin_to_raw03(buf, raw, bufsize, 1024 * 1024);
+			if (!raw03_to_fds(raw, fds, 1024 * 1024)) {
+				MessageBox(hWnd, "Error converting flash data to fds format", "Error", MB_OK);
+				break;
+			}
+			fwrite(fds, 65500, 1, fp);
+		}
+
+		free(raw);
+		free(fds);
+		fclose(fp);
+	}
+
+	//game doctor image
+	else {
+		uint8_t *raw, *gd;
+		FILE *fp;
+		int size;
+
+		raw = (uint8_t*)malloc(1024 * 1024);
+		gd = (uint8_t*)malloc(0x20000);
+
+		//loop thru all used slots by this disk and save each one
+		for (i = 0; i < numslots; i++) {
+
+			fdsemu->ReadFlash(slots[i], &buf, &bufsize);
+			bin_to_raw03(buf, raw, bufsize, 1024 * 1024);
+			size = raw03_to_gd(raw, gd, 1024 * 1024);
+			if (size == -1) {
+				MessageBox(hWnd, "Error converting flash data to Game Doctor format", "Error", MB_OK);
+				break;
+			}
+
+			//try to open/create the file
+			if ((fp = fopen(filename, "wb")) == 0) {
+				MessageBox(hWnd, "Error opening/creating file to save disk image.", "Error", MB_OK);
+				return;
+			}
+
+			fwrite(gd, size, 1, fp);
+			fclose(fp);
+
+			filename[strlen(filename) - 1]++;
+		}
+
+		free(raw);
+		free(gd);
+	}
+
+/*	else {
+		MessageBox(hWnd, "Unknown disk image type stored in flash.", "Error", MB_OK);
+	}*/
+
+}
+
+extern unsigned char firmware[];
+extern unsigned char bootloader[];
+extern int firmware_length;
+extern int bootloader_length;
+
 int APIENTRY WinMain(HINSTANCE hInstance,
 	HINSTANCE hPrevInstance,
 	LPSTR    lpCmdLine,
 	int       nCmdShow)
 {
 	char str[1024];
+	int required_build, required_version;
+	uint32_t required_crc32;
+
+	crc32_gentab();
 
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
@@ -400,7 +577,41 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 	if (fdsemu->Init() == false) {
 		fdsemu->GetError(str, 1024);
 		MessageBox(0, str, "Error", MB_OK);
+		delete fdsemu;
 		return(0);
+	}
+
+	required_build = detect_firmware_build((uint8_t*)firmware, firmware_length);
+	required_version = detect_bootloader_version((uint8_t*)bootloader, bootloader_length);
+	required_crc32 = bootloader_get_crc32((uint8_t*)bootloader, bootloader_length);
+
+	//check firmware version
+	if (fdsemu->dev->Version < required_build) {
+		sprintf(str, "Firmware is outdated, the required minimum version is %d\n\nUpgrading will take about 5 seconds.\n\nPress OK to upgrade, press Cancel to quit.", required_build);
+		if (MessageBox(0, str, "FDSemu", MB_OKCANCEL) != IDOK) {
+			delete fdsemu;
+			return(0);
+		}
+		if (upload_firmware(firmware, firmware_length, 0) == false) {
+			MessageBox(0, "Error updating firmware.", "FDSemu", MB_OK);
+			delete fdsemu;
+			return(0);
+		}
+	}
+
+	//check bootloader version
+	uint32_t bootcrc32 = dev.VerifyBootloader();
+	if (bootcrc32 != required_crc32) {
+		sprintf(str, "Bootloader is outdated (current version is %08X, required is %08X)\n\nUpgrading will take about 2 seconds.\n\nPress OK to upgrade, press Cancel to quit.",bootcrc32,required_crc32);
+		if (MessageBox(0, str, "FDSemu", MB_OKCANCEL) != IDOK) {
+			delete fdsemu;
+			return(0);
+		}
+		if (upload_bootloader(bootloader, bootloader_length) == false) {
+			MessageBox(0, "Error updating bootloader.", "FDSemu", MB_OK);
+			delete fdsemu;
+			return(0);
+		}
 	}
 
 	// Initialize global strings
@@ -543,7 +754,50 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			SelectDiskImages(hWnd,sl);
 			WriteDiskImages(hWnd, sl);
 			delete sl;
-			GenerateList(GetDlgItem(hWnd, ID_DISKLIST),GetDlgItem(hWnd, ID_STATUS));
+			GenerateList(GetDlgItem(hWnd, ID_DISKLIST), GetDlgItem(hWnd, ID_STATUS));
+			break;
+
+		case ID_FLASH_ERASECHIP:
+			if (MessageBox(hWnd, "This process could take a long time.\n\nAre you sure you want to erase the entire flash?", "FDSemu", MB_YESNO) == IDYES) {
+				fdsemu->dev->Flash->ChipErase();
+				GenerateList(GetDlgItem(hWnd, ID_DISKLIST), GetDlgItem(hWnd, ID_STATUS));
+			}
+			break;
+
+		case ID_POPUP_INFO:
+			hList = GetDlgItem(hWnd, ID_DISKLIST);
+
+			//find selected items
+			i = ListView_GetNextItem(hList, -1, LVNI_SELECTED);
+			if (i != -1) {
+				lvi.iItem = i;
+				lvi.iSubItem = 0;
+				lvi.mask = LVIF_PARAM;
+				if (ListView_GetItem(hList, &lvi) == TRUE) {
+					DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_DISKINFO), hWnd, reinterpret_cast<DLGPROC>(DiskInfoDlg), lvi.lParam);
+				}
+			}
+
+			break;
+
+		case ID_FLASH_SAVEIMAGE:
+		case ID_POPUP_SAVE:
+			hStatus = GetDlgItem(hWnd, ID_STATUS);
+			hList = GetDlgItem(hWnd, ID_DISKLIST);
+
+			//find selected items
+			i = ListView_GetNextItem(hList, -1, LVNI_SELECTED);
+			while (i != -1) {
+				lvi.iItem = i;
+				lvi.iSubItem = 0;
+				lvi.mask = LVIF_PARAM;
+				if (ListView_GetItem(hList, &lvi) == TRUE) {
+					SaveDiskImage(hWnd, lvi.lParam);
+				}
+
+				//check if more are selected
+				i = ListView_GetNextItem(hList, i, LVNI_SELECTED);
+			}
 			break;
 
 		case ID_POPUP_DELETE:
@@ -701,17 +955,292 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 
 INT_PTR CALLBACK WriteImagesDlg(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	static int slot;
-
+	UNREFERENCED_PARAMETER(lParam);
 	switch (message)
 	{
 	case WM_INITDIALOG:
-		slot = lParam;
 		return (INT_PTR)TRUE;
 
 	case WM_COMMAND:
 		if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
 		{
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
+
+extern unsigned char savedisk[];
+extern int savedisk_length;
+
+const int saveid_pos[] = {0x13, 0x206B, -1};
+
+void CreateSaveDisk(uint8_t *id, uint8_t **buf, int *bufsize)
+{
+	uint8_t *save;
+	int i, pos;
+
+	save = (uint8_t*)malloc(savedisk_length);
+	memcpy(save, savedisk, savedisk_length);
+	*buf = save;
+	*bufsize = savedisk_length;
+
+	for (i = 0; saveid_pos[i] != -1; i++) {
+		pos = saveid_pos[i];
+		save[pos + 0] = id[0];
+		save[pos + 1] = id[1];
+		save[pos + 2] = id[2];
+		save[pos + 3] = id[3];
+	}
+}
+
+//search for one empty slot
+int FindEmptySlot()
+{
+	TFlashHeader *headers;
+	int i;
+
+	//get copy of flash headers
+	headers = fdsemu->dev->FlashUtil->GetHeaders();
+
+	for (i = 0; i < (int)(fdsemu->dev->Slots); i++) {
+
+		//check if slot is empty
+		if (headers[i].filename[0] == 0xFF) {
+
+			//save empty slot in the slot list
+			return(i);
+		}
+	}
+
+	//if we get here we didnt find an empty slot
+	return(-1);
+}
+
+void DisplayDiskInfo(HWND hDlg,int slot)
+{
+	TFlashHeader *headers, *header;
+	uint8_t *buf;
+	int i, slots[16 + 1], numslots;
+	char str[1024], tmpstr[128];
+
+	headers = fdsemu->dev->FlashUtil->GetHeaders();
+	header = &headers[slot];
+
+	memset(slots, 0, sizeof(int) * (16 + 1));
+	numslots = 0;
+
+//	EnableWindow(GetDlgItem(hDlg, IDC_SAVEDISKCHECK), FALSE);
+
+	//if slot has valid ownerid/nextid
+	if (header->flags & 0x20) {
+
+//		EnableWindow(GetDlgItem(hDlg, IDC_SAVEDISKCHECK), TRUE);
+
+		while (slot != 0xFFFF) {
+			header = &headers[slot];
+			slots[numslots++] = slot;
+			slot = header->nextid;
+		}
+	}
+
+	//old style slot
+	else {
+
+		//save first slot
+		slots[numslots++] = slot;
+
+		//look at slots coming after the first, find the children slots
+		for (uint32_t i = (slot + 1); i < fdsemu->dev->Slots; i++) {
+
+			//if the next slot has ownerid/nextid, it will not belong to this game
+			if (headers[i].flags & 0x20) {
+				break;
+			}
+
+			//save pointer to filename
+			buf = headers[i].filename;
+
+			//empty slot
+			if (buf[0] == 0xff) {
+				break;
+			}
+
+			//contains filename (beginning of another game)
+			else if (buf[0] != 0) {
+				break;
+			}
+
+			//buf[0] == 0, side belonging to this game
+			else {
+				slots[numslots++] = i;
+			}
+		}
+	}
+
+	header = &headers[slots[0]];
+	sprintf(str, "Name: %s\nSlots: %d", header->filename, slots[0]);
+	if (numslots > 1) {
+		for (i = 1; i < numslots; i++) {
+			sprintf(tmpstr, ", %d", slots[i]);
+			strcat(str, tmpstr);
+		}
+	}
+
+	if (header->flags & 0x10) {
+		sprintf(tmpstr, "\nSave Disk Slot: %d", header->saveid);
+		strcat(str, tmpstr);
+		EnableWindow(GetDlgItem(hDlg, IDC_ADDEXISTINGSAVEBUTTON), FALSE);
+		EnableWindow(GetDlgItem(hDlg, IDC_ADDBLANKSAVEBUTTON), FALSE);
+		EnableWindow(GetDlgItem(hDlg, IDC_REMOVESAVEBUTTON), TRUE);
+	}
+	else {
+		EnableWindow(GetDlgItem(hDlg, IDC_ADDEXISTINGSAVEBUTTON), TRUE);
+		EnableWindow(GetDlgItem(hDlg, IDC_ADDBLANKSAVEBUTTON), TRUE);
+		EnableWindow(GetDlgItem(hDlg, IDC_REMOVESAVEBUTTON), FALSE);
+	}
+
+	SetWindowText(GetDlgItem(hDlg, IDC_DISKINFO), str);
+}
+
+INT_PTR CALLBACK DiskInfoDlg(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	static int slot;
+	TFlashHeader *headers, *header;
+	uint8_t *buf, *slotbuf, *ptr;
+	int i, bufsize, binsize;
+	uint8_t diskid[4];
+
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		slot = lParam;
+		DisplayDiskInfo(hDlg, slot);
+		return (INT_PTR)TRUE;
+
+	case WM_COMMAND:
+		switch (LOWORD(wParam)) {
+		case IDC_ADDEXISTINGSAVEBUTTON:
+			return (INT_PTR)TRUE;
+
+		case IDC_ADDBLANKSAVEBUTTON:
+
+			SetWindowText(GetDlgItem(hDlg, IDC_DISKINFO), "Please wait...");
+			headers = fdsemu->dev->FlashUtil->GetHeaders();
+
+			//read entire slot
+			fdsemu->ReadFlash(slot, &buf, &bufsize);
+
+			//eat up the lead-in (shouldnt be lead-in)
+			ptr = buf;
+			while (*ptr == 0) {
+				ptr++;
+			}
+
+			//acquire disk id
+			memcpy(diskid, ptr + 17, 4);
+
+			//free slot buffer
+			free(buf);
+
+			//create save disk for this game
+			CreateSaveDisk(diskid, &buf, &bufsize);
+			slotbuf = (uint8_t*)malloc(0x10000);
+			memset(slotbuf, 0, 0x10000);
+			binsize = gameDoctor_to_bin(slotbuf + 256, buf, 0x10000 - 256);
+
+			//free buf, not needed anymore
+			free(buf);
+
+			//find an empty slot
+			i = FindEmptySlot();
+
+			//no slots
+			if (i == -1) {
+				break;
+			}
+
+			header = (TFlashHeader*)slotbuf;
+
+			//flags for save disk (type=savedisk, ownerid/nextid is valid
+			header->flags = 0x20 | 3;
+			header->ownerid = slot;
+			header->nextid = slot;
+			header->size = MIN(bufsize, 0x10000 - 256);
+
+			fdsemu->WriteFlashRaw(i * 0x10000,slotbuf,0x10000);
+
+			header = &headers[slot];
+
+			//make sure it doesnt already has a save disk
+			if ((header->flags & 0x10) == 0) {
+
+				//read entire slot
+				fdsemu->ReadFlashRaw(slot * 0x10000, &buf, 0x10000);
+
+				//get pointer to header information
+				header = (TFlashHeader*)buf;
+
+				//set save disk flag
+				header->flags |= 0x10;
+
+				//set saveid index
+				header->saveid = i;
+
+				//erase first disk slot
+				fdsemu->dev->Flash->EraseSlot(slot);
+
+				//write data back with changed header
+				fdsemu->WriteFlashRaw(slot * 0x10000, buf, 0x10000);
+
+				//free slot buffer
+				free(buf);
+			}
+			fdsemu->dev->FlashUtil->ReadHeaders();
+			DisplayDiskInfo(hDlg, slot);
+
+			return (INT_PTR)TRUE;
+		case IDC_REMOVESAVEBUTTON:
+
+			SetWindowText(GetDlgItem(hDlg, IDC_DISKINFO), "Please wait...");
+			headers = fdsemu->dev->FlashUtil->GetHeaders();
+			header = &headers[slot];
+
+			//make sure it already has a save disk
+			if (header->flags & 0x10) {
+
+				//read entire slot
+				fdsemu->ReadFlashRaw(slot * 0x10000, &buf, 0x10000);
+
+				//get pointer to header information
+				header = (TFlashHeader*)buf;
+
+				//clear save disk flag
+				header->flags &= ~0x10;
+
+				//erase save disk
+				fdsemu->dev->Flash->EraseSlot(header->saveid);
+
+				//clear saveid index
+				header->saveid = 0;
+
+				//erase first disk slot
+				fdsemu->dev->Flash->EraseSlot(slot);
+
+				//write data back with changed header
+				fdsemu->WriteFlashRaw(slot * 0x10000, buf, 0x10000);
+
+				//free slot buffer
+				free(buf);
+
+				fdsemu->dev->FlashUtil->ReadHeaders();
+				DisplayDiskInfo(hDlg, slot);
+			}
+			return (INT_PTR)TRUE;
+		case IDOK:
+		case IDCANCEL:
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
 		}

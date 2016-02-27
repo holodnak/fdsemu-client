@@ -15,7 +15,7 @@
 #define IDR_DISKLISTMENU                131
 #define IDD_WRITEDIALOG                 132
 #define IDD_WRITEDISK                   133
-#define IDD_DIALOG1                     134
+#define IDD_DISKINFO                    134
 #define IDC_SAVEBUTTON                  1000
 #define IDC_READBUTTON                  1001
 #define IDC_READEDIT                    1002
@@ -36,6 +36,11 @@
 #define IDC_ONESIDERADIO                1023
 #define IDC_SIDECOMBO                   1024
 #define IDC_DISKINFO                    1026
+#define IDC_ADDEXISTINGSAVEBUTTON       1029
+#define IDC_ADDBLANKSAVEBUTTON          1030
+#define IDC_REMOVESAVEBUTTON            1031
+#define IDC_PROGRESS2                   1032
+#define IDC_COMBO1                      1033
 #define ID_DISK_READDISK                32771
 #define ID_DISK_WRITEDISK               32772
 #define ID_FLASH_WRITEIMAGES            32773
@@ -55,7 +60,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        135
 #define _APS_NEXT_COMMAND_VALUE         32781
-#define _APS_NEXT_CONTROL_VALUE         1027
+#define _APS_NEXT_CONTROL_VALUE         1034
 #define _APS_NEXT_SYMED_VALUE           110
 #endif
 #endif

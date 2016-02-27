@@ -9,4 +9,5 @@ int find_slot(int slots);
 char *get_shortname(char *filename);
 bool find_doctors(char *first, char **files, int *numfiles, int maxfiles);
 
+int decompress_lz4(uint8_t *src, uint8_t *dest, int srclen, int destlen);
 int compress_lz4(uint8_t *src, int srcsize, uint8_t **dst, int *dstsize);
