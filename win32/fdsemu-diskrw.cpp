@@ -315,7 +315,7 @@ int CALLBACK CompareFunc(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort)
 	return(_stricmp((char*)headers[lParam1].filename, (char*)headers[lParam2].filename));
 }
 
-int GenerateList(HWND hList,HWND hStatus)
+int GenerateList(HWND hList, HWND hStatus)
 {
 	TFlashHeader *headers;
 	uint32_t i;
@@ -395,7 +395,7 @@ void DragFunc(HWND hWnd, HDROP hDrop)
 	i = GenerateList(GetDlgItem(hWnd, ID_DISKLIST), GetDlgItem(hWnd, ID_STATUS));
 }
 
-void SaveDiskImage(HWND hWnd,int slot)
+void SaveDiskImage(HWND hWnd, int slot)
 {
 	TFlashHeader *headers = fdsemu->dev->FlashUtil->GetHeaders();
 	TFlashHeader *header;
@@ -415,8 +415,13 @@ void SaveDiskImage(HWND hWnd,int slot)
 	memset(slots, 0, sizeof(int) * (16 + 1));
 	numslots = 0;
 
+	//if this is a save disk
+	if ((header->flags & 3) == 3) {
+		slots[numslots++] = slot;
+	}
+
 	//if slot has valid ownerid/nextid
-	if (header->flags & 0x20) {
+	else if (header->flags & 0x20) {
 
 		//keep looping until the end of the chain
 		while (slot != 0xFFFF) {
@@ -463,6 +468,9 @@ void SaveDiskImage(HWND hWnd,int slot)
 	if ((flags & 3) == 0 && (flags & 0x80) == 0) {
 		ofn.lpstrFilter = (LPCSTR)"fwNES Image (*.fds)\0*.fds\0";
 	}
+	else if ((flags & 3) == 3) {
+		ofn.lpstrFilter = (LPCSTR)"Game Doctor Save Disk Image (*.S)\0*.S\0";
+	}
 	else {
 		ofn.lpstrFilter = (LPCSTR)"Game Doctor Image (*.A)\0*.A\0";
 	}
@@ -499,6 +507,7 @@ void SaveDiskImage(HWND hWnd,int slot)
 		//loop thru all used slots by this disk and save each one
 		for (i = 0; i < numslots; i++) {
 			fdsemu->ReadFlash(slots[i], &buf, &bufsize);
+
 			bin_to_raw03(buf, raw, bufsize, 1024 * 1024);
 			if (!raw03_to_fds(raw, fds, 1024 * 1024)) {
 				MessageBox(hWnd, "Error converting flash data to fds format", "Error", MB_OK);
@@ -775,6 +784,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				lvi.mask = LVIF_PARAM;
 				if (ListView_GetItem(hList, &lvi) == TRUE) {
 					DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_DISKINFO), hWnd, reinterpret_cast<DLGPROC>(DiskInfoDlg), lvi.lParam);
+					GenerateList(GetDlgItem(hWnd, ID_DISKLIST), GetDlgItem(hWnd, ID_STATUS));
 				}
 			}
 
@@ -1095,11 +1105,13 @@ void DisplayDiskInfo(HWND hDlg,int slot)
 		EnableWindow(GetDlgItem(hDlg, IDC_ADDEXISTINGSAVEBUTTON), FALSE);
 		EnableWindow(GetDlgItem(hDlg, IDC_ADDBLANKSAVEBUTTON), FALSE);
 		EnableWindow(GetDlgItem(hDlg, IDC_REMOVESAVEBUTTON), TRUE);
+		EnableWindow(GetDlgItem(hDlg, IDC_SAVESAVEBUTTON), TRUE);
 	}
 	else {
 		EnableWindow(GetDlgItem(hDlg, IDC_ADDEXISTINGSAVEBUTTON), TRUE);
 		EnableWindow(GetDlgItem(hDlg, IDC_ADDBLANKSAVEBUTTON), TRUE);
 		EnableWindow(GetDlgItem(hDlg, IDC_REMOVESAVEBUTTON), FALSE);
+		EnableWindow(GetDlgItem(hDlg, IDC_SAVESAVEBUTTON), FALSE);
 	}
 
 	SetWindowText(GetDlgItem(hDlg, IDC_DISKINFO), str);
@@ -1133,7 +1145,7 @@ INT_PTR CALLBACK DiskInfoDlg(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 			//read entire slot
 			fdsemu->ReadFlash(slot, &buf, &bufsize);
 
-			//eat up the lead-in (shouldnt be lead-in)
+			//eat up the lead-in
 			ptr = buf;
 			while (*ptr == 0) {
 				ptr++;
@@ -1237,6 +1249,16 @@ INT_PTR CALLBACK DiskInfoDlg(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 
 				fdsemu->dev->FlashUtil->ReadHeaders();
 				DisplayDiskInfo(hDlg, slot);
+			}
+			return (INT_PTR)TRUE;
+
+		case IDC_SAVESAVEBUTTON:
+			headers = fdsemu->dev->FlashUtil->GetHeaders();
+			header = &headers[slot];
+
+			//make sure it already has a save disk
+			if (header->flags & 0x10) {
+				SaveDiskImage(hDlg, header->saveid);
 			}
 			return (INT_PTR)TRUE;
 		case IDOK:

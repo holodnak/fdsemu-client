@@ -562,12 +562,17 @@ bool CFdsemu::ReadFlash(int slot, uint8_t **buf, int *bufsize)
 		memset(output, 0, 0x20000);
 
 		//decompress the slot
-		destlen = decompress_lz4(data + 256, output, srclen, 0x20000);
+		destlen = decompress_lz4(data + 256, output, srclen, 0x20000) + 256;
 
 		//copy decompressed data to buf
 		*buf = (uint8_t*)malloc(destlen);
 		*bufsize = destlen;
-		memcpy(*buf, output, destlen);
+
+		//copy uncompressed data
+		memcpy(*buf + 256, output, destlen - 256);
+
+		//use this as lead-in
+		memset(*buf, 0, 256);
 		free(output);
 	}
 
@@ -575,8 +580,12 @@ bool CFdsemu::ReadFlash(int slot, uint8_t **buf, int *bufsize)
 	else {
 		*buf = (uint8_t*)malloc(0x10000);
 		*bufsize = 0x10000;
-		memset(*buf, 0, 0x10000);
-		memcpy(*buf, data + 256, 0x10000 - 256);
+
+		//clear header and use as lead-in
+		memcpy(*buf, data, 0x10000);
+
+		//clear header and use as lead-in
+		memset(*buf, 0, 256);
 	}
 
 	free(data);
@@ -606,6 +615,13 @@ bool CFdsemu::Erase(int slot)
 	uint8_t *buf;
 
 	header = &headers[slot];
+
+	//if slot has valid saveid
+	if (header->flags & 0x10) {
+		if (dev->Flash->EraseSlot(header->saveid) == false) {
+			return(false);
+		}
+	}
 
 	//if slot has valid ownerid/nextid
 	if (header->flags & 0x20) {
