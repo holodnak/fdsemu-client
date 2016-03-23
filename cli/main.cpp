@@ -27,11 +27,6 @@ char host[] = "Unknown";
 
 CDevice dev;
 
-int get_mcu_clock()
-{
-	return(dev.Clock);
-}
-
 enum {
 
 	ACTION_GROUP_FLASH = 100,
@@ -249,7 +244,6 @@ int GetDiskSide(int ownerid, int childid)
 {
 	TFlashHeader *headers = dev.FlashUtil->GetHeaders();
 	TFlashHeader *header;
-	uint32_t i;
 	int ret = 1;
 	int slot = ownerid;
 
@@ -670,31 +664,33 @@ int main(int argc, char *argv[])
 		printf("Error opening device.\n");
 		return(2);
 	}
-
-	printf(" Device: %s, %dMB flash (firmware build %d, flashID %06X, mcu %dmhz)\n", dev.DeviceName, dev.FlashSize / 0x100000, dev.Version, dev.FlashID, dev.Clock);
+	printf(" Device: %s, %dMB flash (firmware build %d, flashID %06X)\n", dev.DeviceName, dev.FlashSize / 0x100000, dev.Version, dev.FlashID);
 	printf("\n");
-	if (dev.Version < required_build && action != ACTION_UPDATEFIRMWARE && action != ACTION_UPDATEFIRMWARE2) {
-		char ch;
+	
+	if (dev.IsV2 == 0) {
+		if (dev.Version < required_build && action != ACTION_UPDATEFIRMWARE && action != ACTION_UPDATEFIRMWARE2) {
+			char ch;
 
-		printf("Firmware is outdated, the required minimum version is %d\n\n", required_build);
-		printf("Press 'y' to upgrade, any other key cancel: \n");
-		ch = readKb();
-		if (ch == 'Y' || ch == 'y') {
-			success = upload_firmware(firmware, firmware_length, 0);
+			printf("Firmware is outdated, the required minimum version is %d\n\n", required_build);
+			printf("Press 'y' to upgrade, any other key cancel: \n");
+			ch = readKb();
+			if (ch == 'Y' || ch == 'y') {
+				success = upload_firmware(firmware, firmware_length, 0);
+			}
+			action = ACTION_INVALID;
 		}
-		action = ACTION_INVALID;
-	}
 
-	if (dev.VerifyBootloader() != required_crc32 && action != ACTION_UPDATEBOOTLOADER && action != ACTION_UPDATEFIRMWARE && action != ACTION_UPDATEFIRMWARE2) {
-		char ch;
+		if (dev.VerifyBootloader() != required_crc32 && action != ACTION_UPDATEBOOTLOADER && action != ACTION_UPDATEFIRMWARE && action != ACTION_UPDATEFIRMWARE2) {
+			char ch;
 
-		printf("Bootloader is outdated.\n\n");
-		printf("Press 'y' to upgrade, any other key cancel: \n");
-		ch = readKb();
-		if (ch == 'Y' || ch == 'y') {
-			success = upload_bootloader(bootloader, bootloader_length);
+			printf("Bootloader is outdated.\n\n");
+			printf("Press 'y' to upgrade, any other key cancel: \n");
+			ch = readKb();
+			if (ch == 'Y' || ch == 'y') {
+				success = upload_bootloader(bootloader, bootloader_length);
+			}
+			action = ACTION_INVALID;
 		}
-		action = ACTION_INVALID;
 	}
 
 	switch (action) {
@@ -752,13 +748,8 @@ int main(int argc, char *argv[])
 		dev.FlashUtil->ReadHeaders();
 		//erase all slots
 		if (params[0] && strcmp(params[0], "all") == 0) {
-			if (force == 0) {
-				printf("This operation will erase all flash disk slots.\nTo confirm this operation please add --force to the command line.\n\n");
-			}
-			else {
-				printf("Erasing all slots from flash...\n");
-				success = dev.Flash->Erase(SLOTSIZE, dev.FlashSize - SLOTSIZE);
-			}
+			printf("Erasing all slots from flash...\n");
+			success = dev.Flash->Erase(0, dev.FlashSize);
 		}
 
 		//erase one slot

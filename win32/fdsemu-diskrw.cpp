@@ -1,6 +1,11 @@
 ﻿// fdsemu-diskrw.cpp : Defines the entry point for the application.
 //
+/*
+todo:
+<Voultar> I'd revise the message/prompt during the disk writing procedure (especially when you need to change sides)
+<Voultar> And, I would make the internal memory accessible for when you want to write FDS disks.
 
+*/
 #define _CRT_SECURE_NO_WARNINGS
 
 #pragma comment(lib, "comctl32.lib")
@@ -42,11 +47,6 @@ INT_PTR CALLBACK    WriteImagesDlg(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    DiskInfoDlg(HWND, UINT, WPARAM, LPARAM);
 
 CDevice dev;
-
-int get_mcu_clock()
-{
-	return(dev.Clock);
-}
 
 //CDisk disk;
 

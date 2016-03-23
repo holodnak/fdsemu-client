@@ -50,3 +50,50 @@ bool CSram::Write(uint8_t *buf, uint32_t addr, int size)
 	}
 	return(true);
 }
+
+CSramV2::CSramV2(CDevice *d) : CSram(d)
+{
+	//CSram(d);
+}
+
+bool CSramV2::Read(uint8_t *buf, uint32_t addr, int size)
+{
+	uint8_t cmd[4] = { CMD_READDATA, 0, 0, 0 };
+
+	cmd[1] = addr >> 16;
+	cmd[2] = addr >> 8;
+	cmd[3] = addr;
+
+	if (!dev->SramWrite(cmd, 4, 1, 1))
+		return false;
+	for (; size>0; size -= SPI_READMAX) {
+		if (!dev->SramRead(buf, size > SPI_READMAX ? SPI_READMAX : size, size > SPI_READMAX)) {
+			printf("CSramV2::Read: SramRead failed.\n");
+			return false;
+		}
+		buf += SPI_READMAX;
+	}
+	return true;
+}
+
+bool CSramV2::Write(uint8_t *buf, uint32_t addr, int size)
+{
+	static uint8_t cmd[4] = { CMD_WRITEDATA,0,0,0 };
+
+	cmd[1] = addr >> 16;
+	cmd[2] = addr >> 8;
+	cmd[3] = addr;
+
+	//	printf("outputting write command\n");
+	if (!dev->SramWrite(cmd, 4, 1, 1)) {
+		printf("CSramV2::Write: SramWrite failed.\n");
+		return false;
+	}
+
+	for (; size>0; size -= SPI_WRITEMAX) {
+		if (!dev->SramWrite((uint8_t*)buf, size>SPI_WRITEMAX ? SPI_WRITEMAX : size, 0, size>SPI_WRITEMAX))
+			return(false);
+		buf += SPI_WRITEMAX;
+	}
+	return(true);
+}

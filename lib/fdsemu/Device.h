@@ -71,8 +71,9 @@ private:
 	uint8_t		sequence;
 public:
 	char			DeviceName[256];
-	int			Version, Clock;
+	int			Version;
 	int			VendorID, ProductID;
+	int			IsV2;
 	CSram			*Sram;
 	CFlash		*Flash;
 	CFlashUtil	*FlashUtil;

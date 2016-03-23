@@ -39,6 +39,18 @@ bool loadfile(char *filename, uint8_t **buf, int *filesize)
 	return(true);
 }
 
+void savefile(char *filename, uint8_t *buf, int buflen)
+{
+	FILE *fp;
+
+	if ((fp = fopen(filename, "wb")) == 0) {
+		return;
+	}
+
+	fwrite(buf, buflen, 1, fp);
+	fclose(fp);
+}
+
 void CFdsemu::SetError(const char *str)
 {
 	strcat(error, str);
@@ -168,7 +180,7 @@ bool CFdsemu::ReadDisk(uint8_t **raw, int *rawsize)
 		//			printf(".");
 	} while (result == DISK_READMAX && bytesIn<READBUFSIZE - DISK_READMAX);
 
-	if (result<0) {
+	if (result<0 || (bytesIn - (LEADIN / 8)) <= 0) {
 		SetError("read error\n");
 		free(readBuf);
 		return false;
@@ -189,6 +201,11 @@ bool CFdsemu::WriteDisk(uint8_t *bin, int binsize)
 	const int ZEROSIZE = 0x10000 + 8192;
 	uint8_t *zero = 0;
 	bool ret = false;
+
+	if (CheckDevice() == false) {
+		return(false);
+	}
+	ClearError();
 
 	zero = (uint8_t*)malloc(ZEROSIZE);
 	memset(zero, 0, ZEROSIZE);
@@ -333,7 +350,12 @@ bool CFdsemu::WriteFlashFDS(char *filename, TCallback cb, void *user)
 			break;
 		}
 		if (memcmp(verifybuf, slotdata, SLOTSIZE) != 0) {
-			MessageBox(0, "CFdsemu::WriteFlashFDS: verification failed", "Error", MB_OK);
+			char tmpstr[256];
+
+			sprintf(tmpstr, "CFdsemu::WriteFlashFDS: verification failed for slot %d", slots[i]);
+			savefile("verify.buffer.dump", verifybuf, 0x10000);
+			savefile("verify.slotdata.dump", slotdata, 0x10000);
+			MessageBox(0, tmpstr, "Error", MB_OK);
 			ret = false;
 			break;
 		}
@@ -465,13 +487,18 @@ bool CFdsemu::WriteFlashGD(char *filename, TCallback cb, void *user)
 			break;
 		}
 		if (dev->Flash->Read(verifybuf, slots[i] * SLOTSIZE, SLOTSIZE) == false) {
-			MessageBox(0, "CFdsemu::WriteFlashFDS: error reading back disk side for verification", "Error", MB_OK);
+			MessageBox(0, "CFdsemu::WriteFlashGD: error reading back disk side for verification", "Error", MB_OK);
 			printf("verify error.\n");
 			ret = false;
 			break;
 		}
 		if (memcmp(verifybuf, slotdata, SLOTSIZE) != 0) {
-			MessageBox(0, "CFdsemu::WriteFlashFDS: verification failed", "Error", MB_OK);
+			char tmpstr[256];
+
+			sprintf(tmpstr, "CFdsemu::WriteFlashGD: verification failed for slot %d", slots[i]);
+			savefile("verify.buffer.dump", verifybuf, 0x10000);
+			savefile("verify.slotdata.dump", slotdata, 0x10000);
+			MessageBox(0, tmpstr, "Error", MB_OK);
 			ret = false;
 			break;
 		}
@@ -512,7 +539,7 @@ bool CFdsemu::WriteFlash(char *filename, TCallback cb, void *user)
 		}
 
 		//detect game doctor format
-		else if (buf[3] == 0x01 || buf[4] == 0x2A || buf[5] == 0x4E || buf[0x3D] == 0x02) {
+		else if (buf[3] == 0x01 && buf[4] == 0x2A && buf[5] == 0x4E && buf[0x3D] == 0x02) {
 			printf("Detected Game Doctor format.\n");
 			ret = WriteFlashGD(filename, cb, user);
 		}

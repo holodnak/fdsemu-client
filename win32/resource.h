@@ -40,8 +40,9 @@
 #define IDC_ADDBLANKSAVEBUTTON          1030
 #define IDC_REMOVESAVEBUTTON            1031
 #define IDC_PROGRESS2                   1032
-#define IDC_BUTTON1                     1034
 #define IDC_SAVESAVEBUTTON              1034
+#define IDC_BUTTON1                     1035
+#define IDC_LOADFLASHBUTTON             1035
 #define ID_DISK_READDISK                32771
 #define ID_DISK_WRITEDISK               32772
 #define ID_FLASH_WRITEIMAGES            32773
@@ -61,7 +62,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        135
 #define _APS_NEXT_COMMAND_VALUE         32781
-#define _APS_NEXT_CONTROL_VALUE         1035
+#define _APS_NEXT_CONTROL_VALUE         1036
 #define _APS_NEXT_SYMED_VALUE           110
 #endif
 #endif

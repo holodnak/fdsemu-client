@@ -34,7 +34,7 @@ int detect_format(char *filename)
 		}
 
 		//detect game doctor format
-		else if (buf[3] == 0x01 || buf[4] == 0x2A || buf[5] == 0x4E || buf[0x3D] == 0x02) {
+		else if (buf[3] == 0x01 && buf[4] == 0x2A && buf[5] == 0x4E && buf[0x3D] == 0x02) {
 			printf("Detected Game Doctor format.\n");
 			ret = FORMAT_GD;// GD_writeDisk(filename);
 		}

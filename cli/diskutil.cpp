@@ -94,23 +94,18 @@ uint8_t raw_to_raw03_byte_72mhz(uint8_t raw)
 {
 	if (raw < 0x40)
 		return(3);
-	else if (raw < 0x70)
+	else if (raw < 0x80)
 		return(0);
-	else if (raw < 0xA0)
+	else if (raw < 0xA8)
 		return(1);
-	else if (raw < 0xD0)
+	else if (raw < 0xE0)
 		return(2);
 	return(3);
 }
 
-int get_mcu_clock();
-
 //wow what a kludge :(
 uint8_t raw_to_raw03_byte(uint8_t raw)
 {
-	if (get_mcu_clock() == 48) {
-		return(raw_to_raw03_byte_48mhz(raw));
-	}
 	return(raw_to_raw03_byte_72mhz(raw));
 }
 
@@ -118,7 +113,6 @@ uint8_t raw_to_raw03_byte(uint8_t raw)
 //Input capture clock is 6MHz.  At 96.4kHz (FDS bitrate), 1 bit ~= 62 clocks
 //We could be clever about this and account for drive speed fluctuations, etc. but this will do for now
 void raw_to_raw03(uint8_t *raw, int rawSize) {
-	printf("mcu clock = %d\n", get_mcu_clock());
 	for (int i = 0; i<rawSize; ++i) {
 		raw[i] = raw_to_raw03_byte(raw[i]);
 	}

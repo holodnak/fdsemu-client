@@ -5,28 +5,45 @@
 #include "crc32.h"
 #include "System.h"
 
-int detect_firmware_build(uint8_t *fw, int len)
+int find_string(uint8_t *buf, int buflen, uint8_t *s, int slen)
 {
-	const char ident[] = "NUC123-FDSemu Firmware by James Holodnak";
-	int identlen = strlen(ident);
-	uint8_t *ptr = fw;
-	int i;
-	int ret = -1;
+	int i, ret = -1;
+	uint8_t *p = buf;
 
-	for (i = 0; i < (len - identlen); i++, fw++) {
+	for (i = 0; i < (buflen - slen); i++, p++) {
 
 		//first byte is a match, continue checking
-		if (*fw == (uint8_t)ident[0]) {
+		if (*p == (uint8_t)s[0]) {
 
 			//check for match
-			if (memcmp(fw, ident, identlen) == 0) {
-				ret = *(fw + identlen);
-				ret |= *(fw + identlen + 1) << 8;
+			if (memcmp(p, s, slen) == 0) {
+				ret = (int)(p - buf);
 				break;
 			}
 		}
 	}
 	return(ret);
+}
+
+int detect_firmware_build(uint8_t *fw, int len)
+{
+	const char ident[] = "FDSemu Firmware by James Holodnak";
+	int i, ret = -1;
+
+	if ((i = find_string(fw, len, (uint8_t*)ident, strlen(ident))) != -1) {
+		i += strlen(ident);
+		ret = *(fw + i);
+		ret |= *(fw + i + 1) << 8;
+	}
+	return(ret);
+}
+
+int detect_firmware_target(uint8_t *fw, int len)
+{
+	const char ident[] = "NUC123-FDSemu Firmware by James Holodnak";
+	const char identv2[] = "STM32-FDSemu Firmware by James Holodnak";
+
+	return(-1);
 }
 
 int detect_bootloader_version(uint8_t *fw, int len)
@@ -108,7 +125,7 @@ bool upload_firmware(uint8_t *firmware, int filesize, int useflash)
 	buf32[(0x8000 - 4) / 4] = chksum;
 
 	//newer firmwares store the firmware image in sram to be updated
-	if ((dev.Version > 792) && (useflash == 0)) {
+	if (dev.IsV2 || ((dev.Version > 792) && (useflash == 0))) {
 		printf("uploading new firmware to sram\n");
 		if (!dev.Sram->Write(buf, 0x0000, 0x8000)) {
 			printf("Write failed.\n");
@@ -130,7 +147,7 @@ bool upload_firmware(uint8_t *firmware, int filesize, int useflash)
 	printf("waiting for device to reboot\n");
 
 	dev.UpdateFirmware();
-	sleep_ms(5000);
+	sleep_ms(6000);
 
 	if (!dev.Open()) {
 		printf("Open failed.\n");

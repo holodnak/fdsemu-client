@@ -4,14 +4,16 @@
 #include "Device.h"
 #include "System.h"
 
+//#define VID 0x0483
 #define VID 0x0416
 #define PID 0xBEEF
 
 CDevice::CDevice()
 {
 	handle = 0;
+	FlashID = 0;
+	IsV2 = 0;
 }
-
 
 CDevice::~CDevice()
 {
@@ -55,11 +57,6 @@ bool CDevice::Open()
 
 		if (dev->serial_number) {
 			wcstombs(serial, dev->serial_number, 64);
-			serial[2] = 0;
-			Clock = atoi(serial);
-		}
-		else {
-			Clock = 0;
 		}
 
 		VendorID = dev->vendor_id;
@@ -67,23 +64,30 @@ bool CDevice::Open()
 		Version = dev->release_number;
 
 		//read in flash id to determine type of flash
-		FlashID = ReadFlashID();
-		if (FlashID == 0) {
+		if ((FlashID = ReadFlashID()) == 0) {
 			printf("Error reading flash ID.\n");
 			Close();
 		}
 		
 		//get the size of the flash chip
-		FlashSize = GetFlashSize();
-		if (FlashSize == 0) {
+		else if ((FlashSize = GetFlashSize()) == 0) {
 			printf("Error determining flash size.\n");
 			Close();
 		}
 
-		Slots = FlashSize / 65536;
-		Sram = new CSram(this);
-		Flash = new CFlash(this);
-		FlashUtil = new CFlashUtil(this);
+		else {
+			Slots = FlashSize / 65536;
+			if (strcmp(DeviceName, "FDSemu v2") == 0) {
+				IsV2 = 1;
+				printf("Detected v2 device\n");
+				Sram = new CSramV2(this);
+			}
+			else {
+				Sram = new CSram(this);
+			}
+			Flash = new CFlash(this);
+			FlashUtil = new CFlashUtil(this);
+		}
 	}
 	else {
 		printf("Device not found.\n");
