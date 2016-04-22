@@ -15,6 +15,7 @@ public:
 	//read and write to flash
 	virtual bool Read(uint8_t *buf, uint32_t addr, int size);
 	virtual bool Write(uint8_t *buf, uint32_t addr, int size);
+	bool Transfer(uint32_t slot);
 };
 
 class CSramV2 : public CSram 

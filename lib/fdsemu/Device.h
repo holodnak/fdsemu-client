@@ -24,6 +24,9 @@ enum {
 	ID_SPI_SRAM_READ_STOP,
 	ID_SPI_SRAM_WRITE,
 	ID_SPI_SRAM_VERIFY,
+	ID_SPI_SRAM_TRANSFER,
+	ID_SPI_SRAM_TRANSFER_START,
+	ID_SPI_SRAM_TRANSFER_STATUS,
 
 	ID_READ_IO = 0x10,
 	ID_DISK_READ_START,
@@ -115,6 +118,7 @@ public:
 	//spi sram commands
 	bool SramRead(uint8_t *buf, int size, bool holdCS);
 	bool SramWrite(uint8_t *buf, int size, bool initCS, bool holdCS);
+	bool SramTransfer(uint32_t slot);
 
 	//fds disk drive commands
 	bool DiskWriteStart();

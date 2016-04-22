@@ -261,7 +261,7 @@ int CFdsemu::ParseDiskData(uint8_t *raw, int rawsize, char **output)
 bool CFdsemu::WriteFlashFDS(char *filename, TCallback cb, void *user)
 {
 	TFlashHeader *headers;
-	uint8_t *slotdata, *verifybuf, *bin, *pbin;
+	uint8_t *slotdata, *verifybuf, *verifybuf2, *bin, *pbin;
 	int binsize, i, slots[MAX_SLOTS + 1];
 	CDisk disk;
 	char *shortname;
@@ -285,6 +285,7 @@ bool CFdsemu::WriteFlashFDS(char *filename, TCallback cb, void *user)
 	//allocate memory for slot data
 	slotdata = (uint8_t*)malloc(0x10000);
 	verifybuf = (uint8_t*)malloc(0x10000);
+	verifybuf2 = (uint8_t*)malloc(0x10000);
 
 	cb(user, 0, disk.GetSides());
 
@@ -339,31 +340,154 @@ bool CFdsemu::WriteFlashFDS(char *filename, TCallback cb, void *user)
 
 		//write the data to flash
 		cb(user, 1, i);
+
 		if (dev->Flash->Write(slotdata, slots[i] * SLOTSIZE, SLOTSIZE, cb, user) == false) {
 			MessageBox(0, "CFdsemu::WriteFlashFDS: error writing to flash", "Error", MB_OK);
 			break;
 		}
+
 		if (dev->Flash->Read(verifybuf, slots[i] * SLOTSIZE, SLOTSIZE) == false) {
 			MessageBox(0, "CFdsemu::WriteFlashFDS: error reading back disk side for verification", "Error", MB_OK);
-			printf("verify error.\n");
 			ret = false;
 			break;
 		}
-		if (memcmp(verifybuf, slotdata, SLOTSIZE) != 0) {
-			char tmpstr[256];
 
-			sprintf(tmpstr, "CFdsemu::WriteFlashFDS: verification failed for slot %d", slots[i]);
-			savefile("verify.buffer.dump", verifybuf, 0x10000);
-			savefile("verify.slotdata.dump", slotdata, 0x10000);
-			MessageBox(0, tmpstr, "Error", MB_OK);
-			ret = false;
-			break;
+		//if it doesnt match
+		if (memcmp(verifybuf, slotdata, SLOTSIZE) != 0) {
+
+			//re-read
+			if (dev->Flash->Read(verifybuf2, slots[i] * SLOTSIZE, SLOTSIZE) == false) {
+				MessageBox(0, "CFdsemu::WriteFlashFDS: error reading back disk side for verification (second pass)", "Error", MB_OK);
+				ret = false;
+				break;
+			}
+
+			//compare the two verify's
+			if (memcmp(verifybuf, verifybuf2, SLOTSIZE) != 0) {
+				char tmpstr[256];
+
+				sprintf(tmpstr, "CFdsemu::WriteFlashFDS: verification failed for slot %d", slots[i]);
+				savefile("verify.buffer1.dump", verifybuf, 0x10000);
+				savefile("verify.buffer2.dump", verifybuf2, 0x10000);
+				savefile("verify.slotdata.dump", slotdata, 0x10000);
+				MessageBox(0, tmpstr, "Error", MB_OK);
+				ret = false;
+				break;
+			}
+
+			else {
+				MessageBox(0, "CFdsemu::WriteFlashFDS:  Read back two different verification data from flash...continuing, data probably ok.", "Warning", MB_OK);
+			}
 		}
 	}
 
 	//free slot buffer
 	free(slotdata);
 	free(verifybuf);
+	free(verifybuf2);
+
+	return(ret);
+}
+
+//write disk image to flash
+bool CFdsemu::WriteFlashFastFDS(char *filename, TCallback cb, void *user)
+{
+	TFlashHeader *headers;
+	uint8_t *slotdata, *verifybuf, *verifybuf2, *bin, *pbin;
+	int binsize, i, slots[MAX_SLOTS + 1];
+	CDisk disk;
+	char *shortname;
+	bool ret = true;
+
+	//semi-kludge to ensure the last disk side points to nothing
+	slots[MAX_SLOTS] = 0xFFFF;
+
+	//load the disk image
+	disk.LoadFDS(filename);
+
+	//find enough slots to store the disk image
+	if (FindSlots(&disk, slots, MAX_SLOTS) == false) {
+		MessageBox(0, "Error finding adequate slots for storage disk image.", "Error", MB_OK);
+		return(false);
+	}
+
+	//clear the header and copy the disk image filename
+	shortname = get_shortname(filename);
+
+	//allocate memory for slot data
+	slotdata = (uint8_t*)malloc(0x10000);
+	verifybuf = (uint8_t*)malloc(0x10000);
+	verifybuf2 = (uint8_t*)malloc(0x10000);
+
+	cb(user, 0, disk.GetSides());
+
+	//write each side to flash
+	for (i = 0; i < disk.GetSides(); i++) {
+
+		//copy bin to the rest of the slotdata buffer
+		if (disk.GetBin(i, &bin, &binsize) == false) {
+			MessageBox(0, "CFdsemu::WriteFlashFDS: error getting bin for disk", "Error", MB_OK);
+			ret = false;
+			break;
+		}
+
+		//eat up the lead-in, fdsemu will provide that
+		while (*bin == 0) {
+			bin++;
+			binsize--;
+		}
+
+		if (binsize >= (0x10000 - 256)) {
+			MessageBox(0, "CFdsemu::WriteFlashFDS: bin for disk side is too big...try game doctor format?", "Error", MB_OK);
+			ret = false;
+			break;
+		}
+
+		//clear slotdata buffer
+		memset(slotdata, 0, 0x10000);
+
+		//setup the header
+		//copy the filename if this is the first block
+		if (i == 0) {
+			strncpy((char*)slotdata, shortname, 240);
+		}
+
+		//this bit tells fdsemu that the "nextid" byte is valid
+		slotdata[HEADER_FLAGS] = 0x20;
+
+		//fixup pointer to owner id (first slot of a series of slots)
+		slotdata[HEADER_OWNERID + 0] = (uint8_t)(slots[0] >> 0);
+		slotdata[HEADER_OWNERID + 1] = (uint8_t)(slots[0] >> 8);
+
+		//fixup pointer to next side id
+		slotdata[HEADER_NEXTID + 0] = (uint8_t)(slots[i + 1] >> 0);
+		slotdata[HEADER_NEXTID + 1] = (uint8_t)(slots[i + 1] >> 8);
+
+		//fixup bin size
+		slotdata[HEADER_SIZE + 0] = (uint8_t)(binsize >> 0);
+		slotdata[HEADER_SIZE + 1] = (uint8_t)(binsize >> 8);
+
+		//copy the bin data
+		memcpy(slotdata + 256, bin, binsize);
+
+		cb(user, 1, i);
+
+		//write the data to sram
+		if (dev->Sram->Write(slotdata, 0, SLOTSIZE) == false) {
+			if (dev->Sram->Write(slotdata, 0, SLOTSIZE) == false) {
+				MessageBox(0, "CFdsemu::WriteFlashFastFDS: error writing to sram", "Error", MB_OK);
+				ret = false;
+				break;
+			}
+		}
+
+		dev->Sram->Transfer(slots[i]);
+	}
+
+	//free slot buffer
+	free(slotdata);
+	free(verifybuf);
+	free(verifybuf2);
 
 	return(ret);
 }
@@ -530,12 +654,12 @@ bool CFdsemu::WriteFlash(char *filename, TCallback cb, void *user)
 		//detect fds format
 		if (buf[0] == 'F' && buf[1] == 'D' && buf[2] == 'S' && buf[3] == 0x1A) {
 			printf("Detected fwNES format.\n");
-			ret = WriteFlashFDS(filename, cb, user);
+			ret = WriteFlashFastFDS(filename, cb, user);
 		}
 
 		else if (buf[0] == 0x01 && buf[1] == 0x2A && buf[2] == 0x4E && buf[0x38] == 0x02) {
 			printf("Detected FDS format.\n");
-			ret = WriteFlashFDS(filename, cb, user);
+			ret = WriteFlashFastFDS(filename, cb, user);
 		}
 
 		//detect game doctor format

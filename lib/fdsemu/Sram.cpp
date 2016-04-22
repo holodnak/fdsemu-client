@@ -51,9 +51,13 @@ bool CSram::Write(uint8_t *buf, uint32_t addr, int size)
 	return(true);
 }
 
+bool CSram::Transfer(uint32_t slot)
+{
+	return(dev->SramTransfer(slot));
+}
+
 CSramV2::CSramV2(CDevice *d) : CSram(d)
 {
-	//CSram(d);
 }
 
 bool CSramV2::Read(uint8_t *buf, uint32_t addr, int size)

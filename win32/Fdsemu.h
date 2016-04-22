@@ -35,6 +35,7 @@ public:
 	bool ReadDisk(uint8_t **raw, int *rawsize);
 	bool WriteDisk(uint8_t *bin, int binsize);
 	int ParseDiskData(uint8_t *raw, int rawsize, char **output);
+	bool WriteFlashFastFDS(char *filename, TCallback cb, void *user);
 	bool WriteFlashFDS(char *filename, TCallback cb, void *user);
 	bool WriteFlashGD(char *filename, TCallback cb, void *user);
 	bool WriteFlash(char *filename, TCallback cb, void *user);

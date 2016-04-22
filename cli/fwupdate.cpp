@@ -54,17 +54,9 @@ int detect_bootloader_version(uint8_t *fw, int len)
 	int i;
 	int ret = -1;
 
-	for (i = 0; i < (len - identlen); i++, fw++) {
-
-		//first byte is a match, continue checking
-		if (*fw == (uint8_t)ident[0]) {
-
-			//check for match
-			if (memcmp(fw, ident, identlen) == 0) {
-				ret = *(fw + identlen);
-				break;
-			}
-		}
+	if ((i = find_string(fw, len, (uint8_t*)ident, strlen(ident))) != -1) {
+		i += strlen(ident);
+		ret = *(fw + i);
 	}
 	return(ret);
 }
@@ -111,7 +103,12 @@ bool upload_firmware(uint8_t *firmware, int filesize, int useflash)
 	buf32 = (uint32_t*)buf;
 
 	//insert firmware identifier
-	buf32[(0x8000 - 8) / 4] = 0xDEADBEEF;
+	if (dev.IsV2 == 0) {
+		buf32[(0x8000 - 8) / 4] = 0xDEADBEEF;
+	}
+	else {
+		buf32[(0x8000 - 8) / 4] = 0xCAFEBABE;
+	}
 
 	//calculate the simple xor checksum
 	chksum = 0;
@@ -246,7 +243,7 @@ bool bootloader_update(char *filename)
 	}
 
 	if (detect_bootloader_version(bootloader, filesize) == -1) {
-		printf("Bootloader image is invalid.\n");
+		printf("Bootloader image is invalid. :(\n");
 	}
 	else {
 		ret = upload_bootloader(bootloader, filesize);

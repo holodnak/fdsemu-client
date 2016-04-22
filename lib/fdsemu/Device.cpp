@@ -163,6 +163,7 @@ uint32_t CDevice::GetFlashSize()
 		//256mbit flash
 		case 0x1940EF: // W25Q128FV
 		case 0x19BA20: // N25Q256A
+		case 0x19BB20: // N25Q256A
 			return(0x2000000);
 	}
 
@@ -253,6 +254,26 @@ bool CDevice::SramRead(uint8_t *buf, int size, bool holdCS)
 bool CDevice::SramWrite(uint8_t *buf, int size, bool initCS, bool holdCS)
 {
 	return(GenericWrite(ID_SPI_SRAM_WRITE, buf, size, initCS, holdCS));
+}
+
+bool CDevice::SramTransfer(uint32_t slot)
+{
+	int ret;
+
+	hidbuf[0] = ID_SPI_SRAM_TRANSFER;
+	hidbuf[1] = (uint8_t)(slot);
+	hidbuf[2] = (uint8_t)(slot >> 8);
+	if (hid_send_feature_report(handle, hidbuf, 4) >= 0) {
+
+	}
+
+	while (1) {
+		hidbuf[0] = ID_SPI_SRAM_TRANSFER_STATUS;
+		ret = hid_get_feature_report(handle, hidbuf, 2);
+		if (hidbuf[1] == 0)
+			break;
+	}
+	return(true);
 }
 
 bool CDevice::DiskWriteStart()

@@ -5,6 +5,8 @@ todo:
 <Voultar> I'd revise the message/prompt during the disk writing procedure (especially when you need to change sides)
 <Voultar> And, I would make the internal memory accessible for when you want to write FDS disks.
 
+koitsu: have option to alphabbatize the game list or keep in order it is on flash
+
 */
 #define _CRT_SECURE_NO_WARNINGS
 
@@ -16,7 +18,7 @@ todo:
 #include <windows.h>
 #include <commctrl.h>
 #include <stdio.h>
-//#include <vld.h>
+#include <vld.h>
 #include "fdsemu-diskrw.h"
 #include "Device.h"
 #include "flashrw.h"
@@ -568,27 +570,11 @@ extern unsigned char bootloader[];
 extern int firmware_length;
 extern int bootloader_length;
 
-int APIENTRY WinMain(HINSTANCE hInstance,
-	HINSTANCE hPrevInstance,
-	LPSTR    lpCmdLine,
-	int       nCmdShow)
+int update_v1()
 {
 	char str[1024];
 	int required_build, required_version;
 	uint32_t required_crc32;
-
-	crc32_gentab();
-
-	UNREFERENCED_PARAMETER(hPrevInstance);
-	UNREFERENCED_PARAMETER(lpCmdLine);
-
-	fdsemu = new CFdsemu(&dev);
-	if (fdsemu->Init() == false) {
-		fdsemu->GetError(str, 1024);
-		MessageBox(0, str, "Error", MB_OK);
-		delete fdsemu;
-		return(0);
-	}
 
 	required_build = detect_firmware_build((uint8_t*)firmware, firmware_length);
 	required_version = detect_bootloader_version((uint8_t*)bootloader, bootloader_length);
@@ -611,7 +597,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 	//check bootloader version
 	uint32_t bootcrc32 = dev.VerifyBootloader();
 	if (bootcrc32 != required_crc32) {
-		sprintf(str, "Bootloader is outdated (current version is %08X, required is %08X)\n\nUpgrading will take about 2 seconds.\n\nPress OK to upgrade, press Cancel to quit.",bootcrc32,required_crc32);
+		sprintf(str, "Bootloader is outdated (current version is %08X, required is %08X)\n\nUpgrading will take about 2 seconds.\n\nPress OK to upgrade, press Cancel to quit.", bootcrc32, required_crc32);
 		if (MessageBox(0, str, "FDSemu", MB_OKCANCEL) != IDOK) {
 			delete fdsemu;
 			return(0);
@@ -619,6 +605,34 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 		if (upload_bootloader(bootloader, bootloader_length) == false) {
 			MessageBox(0, "Error updating bootloader.", "FDSemu", MB_OK);
 			delete fdsemu;
+			return(0);
+		}
+	}
+	return(1);
+}
+
+int APIENTRY WinMain(HINSTANCE hInstance,
+	HINSTANCE hPrevInstance,
+	LPSTR    lpCmdLine,
+	int       nCmdShow)
+{
+	char str[1024];
+
+	crc32_gentab();
+
+	UNREFERENCED_PARAMETER(hPrevInstance);
+	UNREFERENCED_PARAMETER(lpCmdLine);
+
+	fdsemu = new CFdsemu(&dev);
+	if (fdsemu->Init() == false) {
+		fdsemu->GetError(str, 1024);
+		MessageBox(0, str, "Error", MB_OK);
+		delete fdsemu;
+		return(0);
+	}
+
+	if (fdsemu->dev->IsV2 == 0) {
+		if (update_v1() == 0) {
 			return(0);
 		}
 	}
