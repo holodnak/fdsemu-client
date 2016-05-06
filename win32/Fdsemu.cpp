@@ -260,7 +260,7 @@ int CFdsemu::ParseDiskData(uint8_t *raw, int rawsize, char **output)
 //write disk image to flash
 bool CFdsemu::WriteFlashFDS(char *filename, TCallback cb, void *user)
 {
-	TFlashHeader *headers;
+	TFlashHeader *headers = dev->FlashUtil->GetHeaders();
 	uint8_t *slotdata, *verifybuf, *verifybuf2, *bin, *pbin;
 	int binsize, i, slots[MAX_SLOTS + 1];
 	CDisk disk;
@@ -337,6 +337,9 @@ bool CFdsemu::WriteFlashFDS(char *filename, TCallback cb, void *user)
 
 		//copy the bin data
 		memcpy(slotdata + 256, bin, binsize);
+
+		//copy the header to the headers array
+		memcpy(headers + slots[i], slotdata, 256);
 
 		//write the data to flash
 		cb(user, 1, i);
@@ -392,7 +395,7 @@ bool CFdsemu::WriteFlashFDS(char *filename, TCallback cb, void *user)
 //write disk image to flash
 bool CFdsemu::WriteFlashFastFDS(char *filename, TCallback cb, void *user)
 {
-	TFlashHeader *headers;
+	TFlashHeader *headers = dev->FlashUtil->GetHeaders();
 	uint8_t *slotdata, *verifybuf, *verifybuf2, *bin, *pbin;
 	int binsize, i, slots[MAX_SLOTS + 1];
 	CDisk disk;
@@ -470,14 +473,19 @@ bool CFdsemu::WriteFlashFastFDS(char *filename, TCallback cb, void *user)
 		//copy the bin data
 		memcpy(slotdata + 256, bin, binsize);
 
+		//copy the header to the headers array
+		memcpy(headers + slots[i], slotdata, 256);
+
 		cb(user, 1, i);
 
 		//write the data to sram
 		if (dev->Sram->Write(slotdata, 0, SLOTSIZE) == false) {
 			if (dev->Sram->Write(slotdata, 0, SLOTSIZE) == false) {
-				MessageBox(0, "CFdsemu::WriteFlashFastFDS: error writing to sram", "Error", MB_OK);
-				ret = false;
-				break;
+				if (dev->Sram->Write(slotdata, 0, SLOTSIZE) == false) {
+					MessageBox(0, "CFdsemu::WriteFlashFastFDS: error writing to sram", "Error", MB_OK);
+					ret = false;
+					break;
+				}
 			}
 		}
 
@@ -494,7 +502,7 @@ bool CFdsemu::WriteFlashFastFDS(char *filename, TCallback cb, void *user)
 
 bool CFdsemu::WriteFlashGD(char *filename, TCallback cb, void *user)
 {
-	TFlashHeader *headers, *header;
+	TFlashHeader *headers = dev->FlashUtil->GetHeaders(), *header;
 	uint8_t *slotdata, *verifybuf, *bin, *cbin;
 	int binsize, cbinsize, i, slots[MAX_SLOTS + 1];
 	CDisk disk;
@@ -604,6 +612,9 @@ bool CFdsemu::WriteFlashGD(char *filename, TCallback cb, void *user)
 
 		delete[] cbin;
 
+		//copy the header to the headers array
+		memcpy(headers + slots[i], slotdata, 256);
+
 		//write the data to flash
 		cb(user, 1, i);
 		if (dev->Flash->Write(slotdata, slots[i] * SLOTSIZE, SLOTSIZE, cb, user) == false) {
@@ -626,6 +637,145 @@ bool CFdsemu::WriteFlashGD(char *filename, TCallback cb, void *user)
 			ret = false;
 			break;
 		}
+	}
+
+	//free slot buffer
+	free(slotdata);
+	free(verifybuf);
+
+	return(ret);
+}
+
+bool CFdsemu::WriteFlashFastGD(char *filename, TCallback cb, void *user)
+{
+	TFlashHeader *headers = dev->FlashUtil->GetHeaders(), *header;
+	uint8_t *slotdata, *verifybuf, *bin, *cbin;
+	int binsize, cbinsize, i, slots[MAX_SLOTS + 1];
+	CDisk disk;
+	char *shortname;
+	bool ret = true;
+
+	//semi-kludge to ensure the last disk side points to nothing
+	slots[MAX_SLOTS] = 0xFFFF;
+
+	//load the disk image
+	disk.LoadGD(filename);
+
+	//find enough slots to store the disk image
+	if (FindSlots(&disk, slots, MAX_SLOTS) == false) {
+		MessageBox(0, "Error finding adequate slots for storage disk image.", "Error", MB_OK);
+		return(false);
+	}
+
+	//clear the header and copy the disk image filename
+	shortname = get_shortname(filename);
+
+	//allocate memory for slot data
+	slotdata = (uint8_t*)malloc(0x10000);
+	verifybuf = (uint8_t*)malloc(0x10000);
+
+	cb(user, 0, disk.GetSides());
+
+	//write each side to flash
+	for (i = 0; i < disk.GetSides(); i++) {
+
+		//copy bin to the rest of the slotdata buffer
+		if (disk.GetBin(i, &bin, &binsize) == false) {
+			MessageBox(0, "CFdsemu::WriteFlashGD: error getting bin for disk", "Error", MB_OK);
+			ret = false;
+			break;
+		}
+
+		//compress the bin data
+		if (compress_lz4(bin, binsize, &cbin, &cbinsize) != 0) {
+			MessageBox(0, "CFdsemu::WriteFlashGD: error compressing disk image", "Error", MB_OK);
+			ret = false;
+			break;
+		}
+
+		if (cbinsize >= (0x10000 - 256)) {
+			MessageBox(0, "CFdsemu::WriteFlashGD: bin for disk side is too big after compression, cannot use disk image", "Error", MB_OK);
+			delete[] cbin;
+			ret = false;
+			break;
+		}
+
+		//clear slotdata buffer
+		memset(slotdata, 0, 0x10000);
+
+		//setup the header
+
+		//this bit tells fdsemu that the "nextid" byte is valid
+		slotdata[HEADER_FLAGS] = 0x20;
+
+		//this bit tells fdsemu that image is compressed and read-only, game doctor image
+		slotdata[HEADER_FLAGS] |= 0xC0 | 0x01;
+
+		//fixup owner id (first slot of a series of slots)
+		slotdata[HEADER_OWNERID + 0] = (uint8_t)(slots[0] >> 0);
+		slotdata[HEADER_OWNERID + 1] = (uint8_t)(slots[0] >> 8);
+
+		//fixup next side id
+		if (disk.IsSaveDisk(i + 1)) {
+			slotdata[HEADER_NEXTID + 0] = 0xFF;
+			slotdata[HEADER_NEXTID + 1] = 0xFF;
+		}
+		else {
+			slotdata[HEADER_NEXTID + 0] = (uint8_t)(slots[i + 1] >> 0);
+			slotdata[HEADER_NEXTID + 1] = (uint8_t)(slots[i + 1] >> 8);
+		}
+
+		//fixup bin size
+		slotdata[HEADER_SIZE + 0] = (uint8_t)(cbinsize >> 0);
+		slotdata[HEADER_SIZE + 1] = (uint8_t)(cbinsize >> 8);
+
+		//copy the filename if this is the first block
+		//also setup save disk information
+		if (i == 0) {
+			strncpy((char*)slotdata, shortname, 240);
+
+			//check existance of save disk
+			if (disk.HasSaveDisk()) {
+				slotdata[HEADER_FLAGS] |= 0x10;
+				slotdata[HEADER_SAVEID] = slots[disk.GetSides() - 1];
+			}
+		}
+
+		//the save disk gets handled differently
+		if (disk.IsSaveDisk(i)) {
+			header = (TFlashHeader*)slotdata;
+			header->flags = 0x20 | 3;
+			header->ownerid = slots[0];
+			header->nextid = slots[0];
+			header->size = MIN(binsize, 0x10000 - 256);
+			memcpy(slotdata + 256, bin, binsize);
+		}
+
+		//all other disks use the compressed data
+		else {
+			memcpy(slotdata + 256, cbin, cbinsize);
+		}
+
+		delete[] cbin;
+
+		//copy the header to the headers array
+		memcpy(headers + slots[i], slotdata, 256);
+
+		//write the data to flash
+		cb(user, 1, i);
+		//write the data to sram
+		if (dev->Sram->Write(slotdata, 0, SLOTSIZE) == false) {
+			if (dev->Sram->Write(slotdata, 0, SLOTSIZE) == false) {
+				if (dev->Sram->Write(slotdata, 0, SLOTSIZE) == false) {
+					MessageBox(0, "CFdsemu::WriteFlashFastGD: error writing to sram", "Error", MB_OK);
+					ret = false;
+					break;
+				}
+			}
+		}
+
+		dev->Sram->Transfer(slots[i]);
+
 	}
 
 	//free slot buffer
@@ -665,7 +815,7 @@ bool CFdsemu::WriteFlash(char *filename, TCallback cb, void *user)
 		//detect game doctor format
 		else if (buf[3] == 0x01 && buf[4] == 0x2A && buf[5] == 0x4E && buf[0x3D] == 0x02) {
 			printf("Detected Game Doctor format.\n");
-			ret = WriteFlashGD(filename, cb, user);
+			ret = WriteFlashFastGD(filename, cb, user);
 		}
 
 		else {

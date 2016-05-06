@@ -18,7 +18,7 @@ koitsu: have option to alphabbatize the game list or keep in order it is on flas
 #include <windows.h>
 #include <commctrl.h>
 #include <stdio.h>
-#include <vld.h>
+//#include <vld.h>
 #include "fdsemu-diskrw.h"
 #include "Device.h"
 #include "flashrw.h"
@@ -275,7 +275,7 @@ void WriteDiskImages(HWND hWnd, CStringList *sl)
 		SendMessage(hList, LB_ADDSTRING, 0, (WPARAM)sl->Get(i));
 		CheckMessages();
 		fdsemu->WriteFlash(sl->Get(i), WriteCallback, (HWND)hProgress);
-		fdsemu->dev->FlashUtil->ReadHeaders();
+//		fdsemu->dev->FlashUtil->ReadHeaders();
 	}
 	DestroyWindow(hDlg);
 	EnableWindow(hWnd, TRUE);

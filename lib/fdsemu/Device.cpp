@@ -253,7 +253,10 @@ bool CDevice::SramRead(uint8_t *buf, int size, bool holdCS)
 
 bool CDevice::SramWrite(uint8_t *buf, int size, bool initCS, bool holdCS)
 {
-	return(GenericWrite(ID_SPI_SRAM_WRITE, buf, size, initCS, holdCS));
+	bool ret = GenericWrite(ID_SPI_SRAM_WRITE, buf, size, initCS, holdCS);
+
+	sleep_ms(50);
+	return(ret);
 }
 
 bool CDevice::SramTransfer(uint32_t slot)

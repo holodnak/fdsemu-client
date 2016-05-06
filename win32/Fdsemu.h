@@ -38,6 +38,7 @@ public:
 	bool WriteFlashFastFDS(char *filename, TCallback cb, void *user);
 	bool WriteFlashFDS(char *filename, TCallback cb, void *user);
 	bool WriteFlashGD(char *filename, TCallback cb, void *user);
+	bool WriteFlashFastGD(char *filename, TCallback cb, void *user);
 	bool WriteFlash(char *filename, TCallback cb, void *user);
 	bool WriteFlashRaw(int addr, uint8_t *buf, int len);
 	bool ReadFlash(int slot, uint8_t **buf, int *bufsize);
