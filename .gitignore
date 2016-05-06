@@ -37,3 +37,6 @@ tool
 
 win32/Debug
 win32/Release
+
+.vs
+*.VC.db
